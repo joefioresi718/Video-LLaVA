@@ -1,9 +1,9 @@
 
-JSON_FOLDER="llava_all_image_video/pt_json"
-IMAGE_FOLDER="llava_all_image_video"
-VIDEO_FOLDER="llava_all_image_video"
+JSON_FOLDER="/home/jfioresi/datasets/Video-LLaVA/train_json"
+IMAGE_FOLDER="/home/jfioresi/datasets/Video-LLaVA"
+VIDEO_FOLDER="/home/jfioresi/datasets/Video-LLaVA"
 
-cd /path/to/Video-LLaVA
+cd /home/jfioresi/vlm/Video-LLaVA
 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 deepspeed videollava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --model_name_or_path lmsys/vicuna-7b-v1.5 \
