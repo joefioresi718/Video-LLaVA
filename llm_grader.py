@@ -7,9 +7,6 @@ import json
 import re
 import time
 
-from huggingface_hub import login
-login('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')
-
 
 # llm_model = 'meta-llama/Llama-2-7b-chat-hf'
 llm_model = 'google/gemma-1.1-7b-it'
