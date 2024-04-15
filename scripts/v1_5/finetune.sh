@@ -1,9 +1,8 @@
 
-
-JSON_FOLDER="llava_all_image_video/ft_json"
-IMAGE_FOLDER="llava_all_image_video"
-VIDEO_FOLDER="llava_all_image_video"
-cd /path/to/Video-LLaVA
+JSON_FOLDER="/home/jfioresi/datasets/Video-LLaVA/train_json"
+IMAGE_FOLDER="/home/jfioresi/datasets/Video-LLaVA"
+VIDEO_FOLDER="/home/jfioresi/datasets/Video-LLaVA"
+cd /home/jfioresi/vlm/Video-LLaVA
 
 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 deepspeed videollava/train/train_mem.py \
     --deepspeed ./scripts/zero2_offload.json \
@@ -39,7 +38,7 @@ HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 deepspeed videollava/train/train_me
     --tf32 True \
     --model_max_length 2048  --tokenizer_model_max_length 3072 \
     --gradient_checkpointing True \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers 8 \
     --lazy_preprocess True \
     --report_to tensorboard \
     --cache_dir "./cache_dir"
