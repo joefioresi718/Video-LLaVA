@@ -73,7 +73,7 @@ def get_model_output(model, video_processor, tokenizer, video, qs, args):
         output_ids = model.generate(
             input_ids,
             images=[video_tensor],
-            do_sample=True,
+            do_sample=False,
             temperature=0.0,
             max_new_tokens=1024,
             use_cache=True,
@@ -88,7 +88,7 @@ def get_model_output(model, video_processor, tokenizer, video, qs, args):
     if outputs.endswith(stop_str):
         outputs = outputs[:-len(stop_str)]
     outputs = outputs.strip()
-    print(outputs)
+    # print(outputs)
     return outputs
 
 
