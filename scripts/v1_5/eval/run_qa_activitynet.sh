@@ -2,9 +2,11 @@
 
 CKPT_NAME="Video-LLaVA-7B"
 model_path="checkpoints/${CKPT_NAME}"
+model_path="LanguageBind/Video-LLaVA-7B"
 cache_dir="./cache_dir"
 GPT_Zero_Shot_QA="eval/GPT_Zero_Shot_QA"
-video_dir="${GPT_Zero_Shot_QA}/Activitynet_Zero_Shot_QA/all_test"
+# video_dir="${GPT_Zero_Shot_QA}/Activitynet_Zero_Shot_QA/all_test"
+video_dir="/groups/mshah/data/activity_net.v1-3/videos"
 gt_file_question="${GPT_Zero_Shot_QA}/Activitynet_Zero_Shot_QA/test_q.json"
 gt_file_answers="${GPT_Zero_Shot_QA}/Activitynet_Zero_Shot_QA/test_a.json"
 output_dir="${GPT_Zero_Shot_QA}/Activitynet_Zero_Shot_QA/${CKPT_NAME}"
