@@ -1,5 +1,5 @@
 # pip install accelerate
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
 import pandas as pd
 import argparse
@@ -8,16 +8,19 @@ import re
 import time
 
 from huggingface_hub import login
-login('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')
+login('')
 
 # llm_model = 'meta-llama/Llama-2-7b-chat-hf'
 # llm_model = 'google/gemma-1.1-7b-it'
 # llm_model = 'mistralai/Mistral-7B-Instruct-v0.2'
 llm_model = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
+
+bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+
 tokenizer = AutoTokenizer.from_pretrained(llm_model, cache_dir='cache_dir')
 if 'mistralai' in llm_model:
     tokenizer.pad_token = tokenizer.eos_token
-model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', torch_dtype=torch.bfloat16, cache_dir='cache_dir')
+model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', quantization_config=bnb_config, torch_dtype=torch.bfloat16)
 
 
 # Create the parser
@@ -31,10 +34,12 @@ args = parser.parse_args()
 
 # Define a function to query the OpenAI API and evaluate the answer
 def get_yes_no_answer(question):
-    system_prompt = 'You are a helpful and precise assistant for checking the quality of the answer. Please answer in only yes or no. DO NOT PROVIDE ANY OTHER OUTPUT TEXT OR EXPLANATION. Only provide the one word answer. For example, your response should look like this: "no".'
-    additional_context = ''
-    input_text = f'{system_prompt} {question} {additional_context}'
+    system_prompt = 'You are a helpful and precise assistant for checking the quality of the answer. Please answer in only yes or no.'
+    additional_context = 'DO NOT PROVIDE ANY OTHER OUTPUT TEXT OR EXPLANATION. Only provide the one word answer. For example, your response should look like this: "no".'
+    if llm_model.startswith('google'):
+        additional_context = ''
     question = f'{question} {additional_context}'
+    input_text = f'{system_prompt} {question}'
     if llm_model.startswith('meta-llama') or llm_model.startswith('mistralai'):
         chat = [
             {
@@ -57,22 +62,24 @@ def get_yes_no_answer(question):
     if llm_model.startswith('mistralai'):
         prompt = f'<s>[INST] {chat[0]["content"].strip()}\n\n{chat[1]["content"].strip()} [/INST]'
         inputs = tokenizer(prompt, return_tensors="pt", padding=True).to(model.device)
-        # prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
         outputs = model.generate(**inputs, use_cache=True, max_new_tokens=20, pad_token_id=tokenizer.eos_token_id)
-    else:
+        # prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
+        # outputs = model.generate(prompt, use_cache=True, max_new_tokens=20)
+        answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
+    elif llm_model.startswith('meta-llama'):
+        prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
+        outputs = model.generate(input_ids=prompt, max_length=150)
+        answer = tokenizer.decode(outputs[0])
+        answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
+    elif llm_model.startswith('google'):
         prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt")
         outputs = model.generate(input_ids=inputs.to(model.device), max_new_tokens=150)
-
-    if llm_model.startswith('meta-llama') or llm_model.startswith('mistralai'):
-        answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
-    elif llm_model.startswith('google'):
         answer = tokenizer.decode(outputs[0])
         answer = answer.split('<start_of_turn>model')[-1].split('<eos>')[0].strip()
-    # elif llm_model.startswith('mistralai'):
-    #     print(answer)
-    # print(answer)
+    else:
+        return 'Invalid llm_model.'
 
     yes_no_regex = re.compile(r"^(yes|no)$", re.IGNORECASE)
 
