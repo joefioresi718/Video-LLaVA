@@ -1,4 +1,3 @@
-# pip install accelerate
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
 import pandas as pd
@@ -8,19 +7,19 @@ import re
 import time
 
 from huggingface_hub import login
-login('')
+login('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')
 
 # llm_model = 'meta-llama/Llama-2-7b-chat-hf'
 # llm_model = 'google/gemma-1.1-7b-it'
-# llm_model = 'mistralai/Mistral-7B-Instruct-v0.2'
-llm_model = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
+llm_model = 'mistralai/Mistral-7B-Instruct-v0.2'
+# llm_model = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
 
 bnb_config = BitsAndBytesConfig(load_in_8bit=True)
 
 tokenizer = AutoTokenizer.from_pretrained(llm_model, cache_dir='cache_dir')
 if 'mistralai' in llm_model:
     tokenizer.pad_token = tokenizer.eos_token
-model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', quantization_config=bnb_config, torch_dtype=torch.bfloat16)
+model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', quantization_config=bnb_config, torch_dtype=torch.bfloat16, cache_dir='cache_dir')
 
 
 # Create the parser
