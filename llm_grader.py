@@ -7,11 +7,16 @@ import json
 import re
 import time
 
+from huggingface_hub import login
+login('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')
 
 # llm_model = 'meta-llama/Llama-2-7b-chat-hf'
-llm_model = 'google/gemma-1.1-7b-it'
+# llm_model = 'google/gemma-1.1-7b-it'
 # llm_model = 'mistralai/Mistral-7B-Instruct-v0.2'
+llm_model = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
 tokenizer = AutoTokenizer.from_pretrained(llm_model)
+if 'mistralai' in llm_model:
+    tokenizer.pad_token = tokenizer.eos_token
 model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', torch_dtype=torch.bfloat16)
 
 
@@ -19,16 +24,18 @@ model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', torch
 parser = argparse.ArgumentParser(description='Process pandas file path.')
 
 # Add arguments
-parser.add_argument('--answer_file', default = 'V-MMVP_ft/V-MMVP_ft_results.csv', help='Path to the pandas file')
+parser.add_argument('--answer_file', default = 'V-MMVP_ft/V-MMVP_ft_results_videochatgpt.csv', help='Path to the pandas file')
 
 # Parse arguments
 args = parser.parse_args()
 
 # Define a function to query the OpenAI API and evaluate the answer
 def get_yes_no_answer(question):
-    system_prompt = 'You are a helpful and precise assistant for checking the quality of the answer. Please answer in only yes or no.'
-    input_text = f'{system_prompt} {question}'
-    if llm_model.startswith('meta-llama'):
+    system_prompt = 'You are a helpful and precise assistant for checking the quality of the answer. Please answer in only yes or no. DO NOT PROVIDE ANY OTHER OUTPUT TEXT OR EXPLANATION. Only provide the one word answer. For example, your response should look like this: "no".'
+    additional_context = ''
+    input_text = f'{system_prompt} {question} {additional_context}'
+    question = f'{question} {additional_context}'
+    if llm_model.startswith('meta-llama') or llm_model.startswith('mistralai'):
         chat = [
             {
                 'role': 'system',
@@ -48,18 +55,20 @@ def get_yes_no_answer(question):
         ]
 
     if llm_model.startswith('mistralai'):
-        prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
-        outputs = model.generate(prompt, max_new_tokens=1000, do_sample=True)
-
+        prompt = f'<s>[INST] {chat[0]["content"].strip()}\n\n{chat[1]["content"].strip()} [/INST]'
+        inputs = tokenizer(prompt, return_tensors="pt", padding=True).to(model.device)
+        # prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
+        outputs = model.generate(**inputs, use_cache=True, max_new_tokens=20, pad_token_id=tokenizer.eos_token_id)
     else:
         prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt")
         outputs = model.generate(input_ids=inputs.to(model.device), max_new_tokens=150)
 
-    answer = tokenizer.decode(outputs[0])
     if llm_model.startswith('meta-llama') or llm_model.startswith('mistralai'):
-        answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[-1].replace('(', ' ').replace(')', ' ').strip()
+        answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
     elif llm_model.startswith('google'):
+        answer = tokenizer.decode(outputs[0])
         answer = answer.split('<start_of_turn>model')[-1].split('<eos>')[0].strip()
     # elif llm_model.startswith('mistralai'):
     #     print(answer)
