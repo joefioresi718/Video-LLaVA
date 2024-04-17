@@ -14,7 +14,6 @@ def parse_args():
     parser.add_argument("--output_dir", default=r'', help="The path to save annotation json files.")
     parser.add_argument("--output_json", default=r'', help="The path to save annotation final combined json file.")
     parser.add_argument("--model_name", default="mistralai/Mixtral-8x7B-Instruct-v0.1", type=str, help="HuggingFace model name.")
-    parser.add_argument("--num_tasks", default=1, type=int, help="Number of splits.")
     args = parser.parse_args()
     return args
 
@@ -63,8 +62,8 @@ def annotate(prediction_set, caption_files, output_dir, model, tokenizer, args):
         # prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
         # outputs = model.generate(prompt, use_cache=True, max_new_tokens=150)
         response_message = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        print(response_message)
-        # answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
+        response_message = response_message.split('[/INST]')[-1].split(tokenizer.eos_token)[0].strip().split('\n')[0].strip()
+        # print(response_message)
         try:
             # Convert response to a Python dictionary.
             response_dict = ast.literal_eval(response_message)
@@ -125,7 +124,6 @@ def main():
         qa_set = {"q": question, "a": answer, "pred": pred}
         prediction_set[id] = qa_set
 
-    # num_tasks = args.num_tasks
     llm_model = args.model_name
 
     bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
@@ -148,17 +146,7 @@ def main():
             # Break the loop when there are no incomplete files
             if len(incomplete_files) == 0:
                 break
-            # if len(incomplete_files) <= num_tasks:
-            #     num_tasks = 1
 
-            # # Split tasks into parts.
-            # part_len = len(incomplete_files) // num_tasks
-            # all_parts = [incomplete_files[i:i + part_len] for i in range(0, len(incomplete_files), part_len)]
-            # task_args = [(prediction_set, part, args.output_dir, model, tokenizer, args) for part in all_parts]
-
-            # # Use a pool of workers to process the files in parallel.
-            # with Pool() as pool:
-            #     pool.starmap(annotate, task_args)
             annotate(prediction_set, incomplete_files, output_dir, model, tokenizer, args)
 
         except Exception as e:
