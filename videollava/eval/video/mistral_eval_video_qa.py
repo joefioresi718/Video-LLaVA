@@ -125,7 +125,7 @@ def main():
         qa_set = {"q": question, "a": answer, "pred": pred}
         prediction_set[id] = qa_set
 
-    num_tasks = args.num_tasks
+    # num_tasks = args.num_tasks
     llm_model = args.model_name
 
     bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
@@ -148,17 +148,18 @@ def main():
             # Break the loop when there are no incomplete files
             if len(incomplete_files) == 0:
                 break
-            if len(incomplete_files) <= num_tasks:
-                num_tasks = 1
+            # if len(incomplete_files) <= num_tasks:
+            #     num_tasks = 1
 
-            # Split tasks into parts.
-            part_len = len(incomplete_files) // num_tasks
-            all_parts = [incomplete_files[i:i + part_len] for i in range(0, len(incomplete_files), part_len)]
-            task_args = [(prediction_set, part, args.output_dir, model, tokenizer, args) for part in all_parts]
+            # # Split tasks into parts.
+            # part_len = len(incomplete_files) // num_tasks
+            # all_parts = [incomplete_files[i:i + part_len] for i in range(0, len(incomplete_files), part_len)]
+            # task_args = [(prediction_set, part, args.output_dir, model, tokenizer, args) for part in all_parts]
 
-            # Use a pool of workers to process the files in parallel.
-            with Pool() as pool:
-                pool.starmap(annotate, task_args)
+            # # Use a pool of workers to process the files in parallel.
+            # with Pool() as pool:
+            #     pool.starmap(annotate, task_args)
+            annotate(prediction_set, incomplete_files, output_dir, model, tokenizer, args)
 
         except Exception as e:
             print(f"Error: {e}")
