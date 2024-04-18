@@ -1,6 +1,6 @@
 import os
 from .clip_encoder import CLIPVisionTower
-from .languagebind import LanguageBindImageTower, LanguageBindVideoTower
+from .languagebind import LanguageBindImageTower, LanguageBindVideoTower, SSLVideoTower
 
 # ============================================================================================================
 
@@ -14,9 +14,12 @@ def build_image_tower(image_tower_cfg, **kwargs):
 
     raise ValueError(f'Unknown image tower: {image_tower}')
 
-def build_video_tower(video_tower_cfg, **kwargs):
+def build_video_tower(video_tower_cfg, load_model='clip', **kwargs):
     video_tower = getattr(video_tower_cfg, 'mm_video_tower', getattr(video_tower_cfg, 'video_tower', None))
     if video_tower.endswith('LanguageBind_Video_merge'):
-        return LanguageBindVideoTower(video_tower, args=video_tower_cfg, cache_dir='./cache_dir', **kwargs)
+        if load_model == 'clip':
+            return LanguageBindVideoTower(video_tower, args=video_tower_cfg, cache_dir='./cache_dir', **kwargs)
+        else:
+            return SSLVideoTower(video_tower, args=video_tower_cfg, cache_dir='./cache_dir', **kwargs)
     raise ValueError(f'Unknown video tower: {video_tower}')
 # ============================================================================================================

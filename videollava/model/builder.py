@@ -128,7 +128,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 model = AutoModelForCausalLM.from_pretrained(model_path, low_cpu_mem_usage=True, **kwargs)
 
     # ==========================================================================================================
-    processor = {'image': None, 'video': None}
+    processor = {'image': None, 'video': None, 'ssl': None}
 
     if 'llava' in model_name.lower():
         mm_use_im_start_end = getattr(model.config, "mm_use_im_start_end", False)
@@ -156,6 +156,12 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             video_tower.to(device=device, dtype=torch.float16)
             video_processor = video_tower.video_processor
             processor['video'] = video_processor
+            
+            ssl_tower = model.get_ssl_tower()
+            if ssl_tower is not None:
+                ssl_tower.to(device=device, dtype=torch.float16)
+            ssl_processor = ssl_tower.ssl_processor
+            processor['ssl'] = ssl_processor
     # ==========================================================================================================
 
     if hasattr(model.config, "max_sequence_length"):

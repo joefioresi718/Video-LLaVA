@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from transformers import AutoConfig
+import torchvision.transforms as trans
 
 from .image.configuration_image import LanguageBindImageConfig
 from .image.modeling_image import LanguageBindImage
@@ -26,6 +27,8 @@ from .thermal.configuration_thermal import LanguageBindThermalConfig
 from .thermal.modeling_thermal import LanguageBindThermal
 from .thermal.tokenization_thermal import LanguageBindThermalTokenizer
 from .thermal.processing_thermal import LanguageBindThermalProcessor
+
+from .video.load_vjepa import init_encoder
 
 
 
@@ -258,3 +261,95 @@ class LanguageBindVideoTower(nn.Module):
         return (self.config.image_size // self.config.patch_size) ** 2
 
 
+class SSLVideoTower(nn.Module):
+    def __init__(self, video_tower, args, delay_load=False, cache_dir='./cache_dir'):
+        super().__init__()
+
+        self.is_loaded = False
+
+        self.video_tower_name = video_tower
+        self.select_layer = args.mm_vision_select_layer
+        self.select_feature = getattr(args, 'mm_vision_select_feature', 'patch')
+
+        self.cache_dir = cache_dir
+
+        if not delay_load:
+            self.load_model()
+        else:
+            self.cfg_only = LanguageBindVideoConfig.from_pretrained(self.video_tower_name, cache_dir=self.cache_dir)
+
+    ############################################################
+    def load_model(self):
+        model = LanguageBindVideo.from_pretrained(self.video_tower_name, cache_dir=self.cache_dir)
+        self.video_processor = LanguageBindVideoProcessor(model.config)
+        self.ssl_processor = trans.Compose([
+                trans.Resize(size=224, interpolation=trans.InterpolationMode.BILINEAR, antialias=False),
+                trans.CenterCrop(size=(224, 224)),
+                trans.ToPILImage(),
+                trans.ToTensor(),  # Converts to tensor & scales to [0,1]
+                trans.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+
+
+        # model = LanguageBindImage.from_pretrained('LanguageBind/LanguageBind_Image', cache_dir=self.cache_dir)
+        self.video_tower = model.vision_model
+        self.video_tower.requires_grad_(False)
+
+        self.ssl_tower = init_encoder()
+        self.ssl_tower.requires_grad_(False)
+
+        self.is_loaded = True
+
+
+    def feature_select(self, video_forward_outs):
+        video_features = video_forward_outs.hidden_states[self.select_layer]  # b t n c
+        return video_features  # return all
+        # b, t, n, c = video_features.shape
+        # if self.select_feature == 'patch':
+        #     video_features = video_features[:, :, 1:]
+        # else:
+        #     raise ValueError(f'Unexpected select feature: {self.select_feature}')
+        # return video_features
+
+    @torch.no_grad()
+    def forward(self, videos):
+        if type(videos) is list:
+            video_features = []
+            for video in videos:
+                video_forward_out = self.ssl_tower(video.to(device=self.device, dtype=self.dtype).unsqueeze(0))
+                video_feature = self.feature_select(video_forward_out).to(video.dtype)
+                video_features.append(video_feature)
+        else:
+            video_forward_outs = self.ssl_tower(videos.to(device=self.device, dtype=self.dtype))
+            video_features = self.feature_select(video_forward_outs).to(videos.dtype)
+
+        return video_features
+
+    @property
+    def dummy_feature(self):
+        return torch.zeros(1, self.hidden_size, device=self.device, dtype=self.dtype)
+
+    @property
+    def dtype(self):
+        return self.video_tower.embeddings.class_embedding.dtype  #############
+        # return torch.randn(1).cuda().dtype
+
+    @property
+    def device(self):
+        return self.video_tower.embeddings.class_embedding.device  ##############
+        # return torch.randn(1).cuda().device
+
+    @property
+    def config(self):
+        if self.is_loaded:
+            return self.video_tower.config
+        else:
+            return self.cfg_only
+
+    @property
+    def hidden_size(self):
+        return self.ssl_tower.num_features
+
+    @property
+    def num_patches(self):
+        return (self.config.image_size // self.config.patch_size) ** 2
