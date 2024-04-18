@@ -33,8 +33,10 @@ class LlavaMetaModel:
             self.image_tower = build_image_tower(config, delay_load=True)
         if getattr(config, "mm_video_tower", None) is not None:
             self.video_tower = build_video_tower(config, load_model='clip', delay_load=True)
-            self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
-            self.ssl_projector = build_vision_projector(config)
+            if getattr(config, "ssl_encoder", None) is not None:
+                self.ssl = True
+                self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
+                self.ssl_projector = build_vision_projector(config)
         if getattr(config, "mm_image_tower", None) is not None or getattr(config, "mm_video_tower", None) is not None:
             self.mm_projector = build_vision_projector(config)
 
@@ -60,7 +62,8 @@ class LlavaMetaModel:
         # ==============================================
         image_tower = model_args.image_tower
         video_tower = model_args.video_tower
-        ssl_tower = model_args.ssl_tower
+        if self.config.ssl_encoder:
+            ssl_tower = model_args.ssl_tower
         assert image_tower is not None or video_tower is not None
         # ==============================================
         mm_vision_select_layer = model_args.mm_vision_select_layer
@@ -102,21 +105,22 @@ class LlavaMetaModel:
                     video_tower = self.video_tower
                 video_tower.load_model()
 
-        self.config.mm_ssl_tower = ssl_tower
-        if ssl_tower is not None:
-            if self.get_ssl_tower() is None:
-                ssl_tower = build_video_tower(model_args, load_model='ssl')
+        if self.config.ssl_encoder:
+            self.config.mm_ssl_tower = ssl_tower
+            if ssl_tower is not None:
+                if self.get_ssl_tower() is None:
+                    ssl_tower = build_video_tower(model_args, load_model='ssl')
 
-                if fsdp is not None and len(fsdp) > 0:
-                    self.ssl_tower = [ssl_tower]
+                    if fsdp is not None and len(fsdp) > 0:
+                        self.ssl_tower = [ssl_tower]
+                    else:
+                        self.ssl_tower = ssl_tower
                 else:
-                    self.ssl_tower = ssl_tower
-            else:
-                if fsdp is not None and len(fsdp) > 0:
-                    ssl_tower = self.ssl_tower[0]
-                else:
-                    ssl_tower = self.ssl_tower
-                ssl_tower.load_model()
+                    if fsdp is not None and len(fsdp) > 0:
+                        ssl_tower = self.ssl_tower[0]
+                    else:
+                        ssl_tower = self.ssl_tower
+                    ssl_tower.load_model()
 
         # ==========================================================================
 
@@ -259,10 +263,11 @@ class LlavaMetaForCausalLM(ABC):
             for i, pos in enumerate(video_idx):
                 t = video_features_minibatch[i].shape[0]
                 tmp_image_features[pos] = [video_features_minibatch[i][j] for j in range(t)]
-            ssl_features_minibatch = self.encode_ssl_videos(videos_minibatch)  # fake list [mini_b, t, l, c]
-            for i, pos in enumerate(video_idx):
-                t = ssl_features_minibatch[i].shape[0]
-                tmp_ssl_features[pos] = [ssl_features_minibatch[i][j] for j in range(t)]
+            if self.config.ssl_encoder:
+                ssl_features_minibatch = self.encode_ssl_videos(videos_minibatch)  # fake list [mini_b, t, l, c]
+                for i, pos in enumerate(video_idx):
+                    t = ssl_features_minibatch[i].shape[0]
+                    tmp_ssl_features[pos] = [ssl_features_minibatch[i][j] for j in range(t)]
 
         new_tmp = []
         for image in tmp_image_features:
@@ -276,15 +281,16 @@ class LlavaMetaForCausalLM(ABC):
                 new_tmp.append(image)
         image_features = new_tmp
 
-        new_tmp = []
-        for image in tmp_ssl_features:
-            if isinstance(image, list):
-                t = len(image)
-                for i in range(t):
-                    new_tmp.append(image[i])
-            else:
-                new_tmp.append(image)
-        ssl_features = new_tmp
+        if self.config.ssl_encoder:
+            new_tmp = []
+            for image in tmp_ssl_features:
+                if isinstance(image, list):
+                    t = len(image)
+                    for i in range(t):
+                        new_tmp.append(image[i])
+                else:
+                    new_tmp.append(image)
+            ssl_features = new_tmp
         # print(len(image_features), *[i.shape for i in image_features])
         # print(len(image_features), image_features[0].shape)
         # ====================================================================================================
@@ -320,6 +326,7 @@ class LlavaMetaForCausalLM(ABC):
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
             # print(num_images, cur_input_ids)
+            # TODO: not sure if this is correct implementation.
             if num_images == 0:
                 cur_image_features = (0.*self.get_model().mm_projector(image_tower.dummy_feature)).sum() # image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
@@ -348,7 +355,7 @@ class LlavaMetaForCausalLM(ABC):
                 if i < num_images:
                     # print(cur_image_idx)
                     cur_image_features = image_features[cur_image_idx]
-                    if getattr(videos_minibatch, 'ndim', 0) == 5:
+                    if getattr(videos_minibatch, 'ndim', 0) == 5 and self.config.ssl_encoder:
                         cur_ssl_features = ssl_features[cur_image_idx]
                         _, feat_dim = cur_image_features.shape
                         merged_features = torch.empty(cur_image_features.shape[0] + cur_ssl_features.shape[0], feat_dim, dtype=cur_image_features.dtype)
