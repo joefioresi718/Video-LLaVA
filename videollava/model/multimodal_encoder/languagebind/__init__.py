@@ -316,12 +316,13 @@ class SSLVideoTower(nn.Module):
         if type(videos) is list:
             video_features = []
             for video in videos:
-                video_forward_out = self.ssl_tower(video.to(device=self.device, dtype=self.dtype).unsqueeze(0))
-                video_feature = self.feature_select(video_forward_out).to(video.dtype)
+                video_feature = self.ssl_tower(video.to(device=self.device, dtype=self.dtype).unsqueeze(0))
+                # video_feature = self.feature_select(video_forward_out).to(video.dtype)
                 video_features.append(video_feature)
         else:
-            video_forward_outs = self.ssl_tower(videos.to(device=self.device, dtype=self.dtype))
-            video_features = self.feature_select(video_forward_outs).to(videos.dtype)
+            video_feature = self.ssl_tower(videos.to(device=self.device, dtype=self.dtype))
+            # video_features = self.feature_select(video_forward_outs).to(videos.dtype)
+            video_features = video_feature.to(videos.dtype)
 
         return video_features
 

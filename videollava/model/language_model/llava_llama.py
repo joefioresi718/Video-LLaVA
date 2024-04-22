@@ -47,8 +47,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.pretraining_tp = config.pretraining_tp
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        print(config)
-        self.ssl_encoder = config.ssl_encoder
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -126,6 +124,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 labels,
                 images
             )
+
+        # print('labels', labels.shape)
 
         return super().forward(
             input_ids=input_ids,

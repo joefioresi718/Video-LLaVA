@@ -24,7 +24,7 @@ from videollava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOK
     DEFAULT_VIDEO_PATCH_TOKEN, DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN
 
 
-def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", **kwargs):
+def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", ssl_encoder=False, **kwargs):
     kwargs = {"device_map": device_map, **kwargs}
 
     if device != "cuda":
@@ -129,6 +129,9 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
 
     # ==========================================================================================================
     processor = {'image': None, 'video': None, 'ssl': None}
+    model.config.ssl_encoder = ssl_encoder
+    if not ssl_encoder:
+        model.config.ssl_tower = None
 
     if 'llava' in model_name.lower():
         mm_use_im_start_end = getattr(model.config, "mm_use_im_start_end", False)
@@ -157,6 +160,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             video_processor = video_tower.video_processor
             processor['video'] = video_processor
             
+        if model.config.ssl_tower is not None:
             ssl_tower = model.get_ssl_tower()
             if ssl_tower is not None:
                 ssl_tower.to(device=device, dtype=torch.float16)

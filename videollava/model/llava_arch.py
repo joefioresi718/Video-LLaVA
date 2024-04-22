@@ -33,10 +33,8 @@ class LlavaMetaModel:
             self.image_tower = build_image_tower(config, delay_load=True)
         if getattr(config, "mm_video_tower", None) is not None:
             self.video_tower = build_video_tower(config, load_model='clip', delay_load=True)
-            if getattr(config, "ssl_encoder", None) is not None:
-                self.ssl = True
-                self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
-                self.ssl_projector = build_vision_projector(config)
+            self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
+            self.ssl_projector = build_vision_projector(config)
         if getattr(config, "mm_image_tower", None) is not None or getattr(config, "mm_video_tower", None) is not None:
             self.mm_projector = build_vision_projector(config)
 
@@ -249,7 +247,7 @@ class LlavaMetaForCausalLM(ABC):
         videos_minibatch = torch.stack([images[idx] for idx in video_idx]) if len(video_idx) > 0 else []  # mini_b c t h w
 
         tmp_image_features = [None] * (len(image_idx) + len(video_idx))
-        tmp_ssl_features = [None] * len(video_idx)
+        tmp_ssl_features = [None] * (len(image_idx) + len(video_idx))
         if getattr(images_minibatch, 'ndim', 0) == 4:  # batch consists of images, [mini_b, c, h, w]
             if image_tower is not None:
                 image_features_minibatch = self.encode_images(images_minibatch)  # [mini_b, l, c]
@@ -266,8 +264,7 @@ class LlavaMetaForCausalLM(ABC):
             if self.config.ssl_encoder:
                 ssl_features_minibatch = self.encode_ssl_videos(videos_minibatch)  # fake list [mini_b, t, l, c]
                 for i, pos in enumerate(video_idx):
-                    t = ssl_features_minibatch[i].shape[0]
-                    tmp_ssl_features[pos] = [ssl_features_minibatch[i][j] for j in range(t)]
+                    tmp_ssl_features[pos] = ssl_features_minibatch[i]
 
         new_tmp = []
         for image in tmp_image_features:
@@ -281,16 +278,20 @@ class LlavaMetaForCausalLM(ABC):
                 new_tmp.append(image)
         image_features = new_tmp
 
-        if self.config.ssl_encoder:
-            new_tmp = []
+        if self.config.ssl_encoder and len(video_idx) > 0:
+            new_tmp_ssl = []
             for image in tmp_ssl_features:
                 if isinstance(image, list):
                     t = len(image)
                     for i in range(t):
-                        new_tmp.append(image[i])
+                        new_tmp_ssl.append(image[i])
                 else:
-                    new_tmp.append(image)
-            ssl_features = new_tmp
+                    new_tmp_ssl.append(image)
+            ssl_features = new_tmp_ssl
+
+        # if len(video_idx) > 0:
+        #     print(len(image_features), *[i.shape for i in image_features])
+        #     print(len(ssl_features), *[i.shape for i in ssl_features if i is not None])
         # print(len(image_features), *[i.shape for i in image_features])
         # print(len(image_features), image_features[0].shape)
         # ====================================================================================================
@@ -320,7 +321,6 @@ class LlavaMetaForCausalLM(ABC):
         labels = [cur_labels[cur_attention_mask] for cur_labels, cur_attention_mask in zip(labels, attention_mask)]
 
         new_input_embeds = []
-        new_ssl_embeds = []
         new_labels = []
         cur_image_idx = 0
         for batch_idx, cur_input_ids in enumerate(input_ids):
@@ -328,7 +328,7 @@ class LlavaMetaForCausalLM(ABC):
             # print(num_images, cur_input_ids)
             # TODO: not sure if this is correct implementation.
             if num_images == 0:
-                cur_image_features = (0.*self.get_model().mm_projector(image_tower.dummy_feature)).sum() # image_features[cur_image_idx]
+                cur_image_features = image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0]], dim=0)
                 new_input_embeds.append(cur_input_embeds)
@@ -355,32 +355,25 @@ class LlavaMetaForCausalLM(ABC):
                 if i < num_images:
                     # print(cur_image_idx)
                     cur_image_features = image_features[cur_image_idx]
-                    if getattr(videos_minibatch, 'ndim', 0) == 5 and self.config.ssl_encoder:
-                        cur_ssl_features = ssl_features[cur_image_idx]
-                        _, feat_dim = cur_image_features.shape
-                        merged_features = torch.empty(cur_image_features.shape[0] + cur_ssl_features.shape[0], feat_dim, dtype=cur_image_features.dtype)
-                        merged_features[0::2] = cur_image_features
-                        merged_features[1::2] = cur_ssl_features
-                        cur_image_features = merged_features
-
                     cur_image_idx += 1
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
 
+            # curr_new_input_embeds.append(ssl_features[])
+            if num_images == 8 and self.config.ssl_encoder: # TODO: set to num frames.
+                cur_new_input_embeds.append(ssl_features[batch_idx])
+                cur_new_labels.append(torch.full((ssl_features[batch_idx].shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
+
             cur_new_input_embeds = torch.cat(cur_new_input_embeds)
-            if getattr(videos_minibatch, 'ndim', 0) == 5:
-                cur_new_ssl_embeds = torch.cat(cur_new_ssl_embeds)
             cur_new_labels = torch.cat(cur_new_labels)
 
             new_input_embeds.append(cur_new_input_embeds)
-            new_ssl_embeds.append(cur_new_ssl_embeds)
             new_labels.append(cur_new_labels)
 
         # Truncate sequences to max length as image embeddings can make the sequence longer
         tokenizer_model_max_length = getattr(self.config, 'tokenizer_model_max_length', None)
         if tokenizer_model_max_length is not None:
             new_input_embeds = [x[:tokenizer_model_max_length] for x in new_input_embeds]
-            new_ssl_embeds = [x[:tokenizer_model_max_length] for x in new_ssl_embeds]
             new_labels = [x[:tokenizer_model_max_length] for x in new_labels]
 
         # Combine them

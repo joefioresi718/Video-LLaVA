@@ -39,6 +39,7 @@ from videollava.mm_utils import tokenizer_image_token
 
 from PIL import Image
 from videollava.utils import order_pick_k
+import zipfile
 
 local_rank = None
 
@@ -67,6 +68,7 @@ class ModelArguments:
     # ===================================================================
     image_tower: Optional[str] = field(default=None)
     video_tower: Optional[str] = field(default=None)
+    ssl_tower: Optional[str] = field(default=None)
     # ===================================================================
 
 @dataclass
@@ -691,6 +693,8 @@ class LazySupervisedDataset(Dataset):
         self.tokenizer = tokenizer
         self.list_data_dict = list_data_dict
         self.data_args = data_args
+        img_zip = '/llava_image_tune.zip' if 'tune' in data_path[0] else '/llava_image.zip'
+        self.zipfile = zipfile.ZipFile(data_args.image_folder + img_zip, 'r')
 
     def __len__(self):
         return len(self.list_data_dict)
@@ -728,7 +732,8 @@ class LazySupervisedDataset(Dataset):
                 image_file = image_file if isinstance(image_file, list) else [image_file]
                 image_file = order_pick_k(image_file, MAX_IMAGE_LENGTH)
                 # print(f"total {len(self.list_data_dict[i]['image'])} now {len(image_file)}")
-                image = [Image.open(os.path.join(image_folder, file)).convert('RGB') for file in image_file]
+                # image = [Image.open(os.path.join(image_folder, file)).convert('RGB') for file in image_file]
+                image = [Image.open(self.zipfile.open(file)).convert('RGB') for file in image_file]
                 if self.data_args.image_aspect_ratio == 'pad':
                     image = [expand2square(i, tuple(int(x * 255) for x in image_processor.image_mean)) for i in image]
                     image = [image_processor.preprocess(i, return_tensors='pt')['pixel_values'][0] for i in image]
@@ -1000,7 +1005,8 @@ def train():
             conversation_lib.default_conversation = conversation_lib.conv_templates["vicuna_v1"]
 
     # =============================================================================================================
-    if model_args.image_tower is not None or model_args.video_tower is not None:
+    model.config.ssl_encoder = model_args.ssl_encoder
+    if model_args.image_tower is not None or model_args.video_tower is not None or model_args.ssl_tower is not None:
         # print(model_args)
         model.get_model().initialize_vision_modules(
             model_args=model_args,
@@ -1019,6 +1025,10 @@ def train():
             data_args.video_processor = video_tower.video_processor
             data_args.is_multimodal = True
             data_args.num_frames = video_tower.config.num_frames
+
+        if model_args.ssl_tower is not None:
+            ssl_tower = model.get_ssl_tower()
+            ssl_tower.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
     # =============================================================================================================
 
 

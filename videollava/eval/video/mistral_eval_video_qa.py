@@ -2,6 +2,7 @@ import os
 import argparse
 import json
 import ast
+import re
 from multiprocessing.pool import Pool
 import torch
 from tqdm import tqdm
@@ -52,7 +53,7 @@ def annotate(prediction_set, caption_files, output_dir, model, tokenizer, args):
                     "Provide your evaluation only as a yes/no and score where the score is an integer value between 0 and 5, with 5 indicating the highest meaningful match. "
                     "Please generate the response in the form of a Python dictionary string with keys 'pred' and 'score', where value of 'pred' is  a string of 'yes' or 'no' and value of 'score' is in INTEGER, not STRING."
                     "DO NOT PROVIDE ANY OTHER OUTPUT TEXT OR EXPLANATION. Only provide the Python dictionary string. "
-                    "For example, your response should look like this: {'pred': 'yes', 'score': 4.8}."
+                    "For example, your ENTIRE response should look like this: {'pred': 'yes', 'score': 4.8}."
             }
         ]
 
@@ -61,8 +62,15 @@ def annotate(prediction_set, caption_files, output_dir, model, tokenizer, args):
         outputs = model.generate(**inputs, use_cache=True, max_new_tokens=150, pad_token_id=tokenizer.eos_token_id)
         # prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
         # outputs = model.generate(prompt, use_cache=True, max_new_tokens=150)
-        response_message = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        response_message = response_message.split('[/INST]')[-1].split(tokenizer.eos_token)[0].strip().split('\n')[0].strip()
+
+        sample_eval = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        sample_eval = re.match(r".*(\{.*?\}).*", sample_eval, re.S).group(1)
+        response_message = sample_eval.replace("'", '"')
+        print(response_message)
+        # response_message = response_message.split('[/INST]')[-1].split('{')[-1].split('}')[0]#.split(tokenizer.eos_token)[0].strip()# .split('\n')[0].strip().split('python')[-1].split('```')[0].split('}')[0].strip() + '}'
+        # if '`' in response_message:
+        #     response_message = response_message.split('`')[1]
+        # response_message = '{' + response_message + '}'
         # print(response_message)
         try:
             # Convert response to a Python dictionary.
@@ -136,7 +144,7 @@ def main():
     while True:
         try:
             # Files that have not been processed yet.
-            completed_files = os.listdir(output_dir)
+            completed_files = sorted(os.listdir(output_dir))
             print(f"completed_files: {len(completed_files)}")
 
             # Files that have not been processed yet.

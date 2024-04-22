@@ -371,6 +371,9 @@ class VisionTransformer(nn.Module):
             # Compute scale factor for spatio-temporal interpolation
             scale_factor = (T/N_t, H/N_h, W/N_w)
 
+            # Convert to float16.
+            pos_embed = pos_embed.to(torch.float16)
+
             pos_embed = nn.functional.interpolate(
                 pos_embed.reshape(1, N_t, N_h, N_w, dim).permute(0, 4, 1, 2, 3),
                 scale_factor=scale_factor,
@@ -388,6 +391,9 @@ class VisionTransformer(nn.Module):
             # Compute scale factor for spatial interpolation
             npatch = (H // self.patch_size) * (W // self.patch_size)
             scale_factor = math.sqrt(npatch / N)
+
+            # Convert to float16.
+            pos_embed = pos_embed.to(torch.float16)
 
             pos_embed = nn.functional.interpolate(
                 pos_embed.reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
@@ -812,7 +818,7 @@ def load_pretrained(
 
 def init_encoder(
     device=torch.device('cuda:0'),
-    pretrained='/home/jo869742/PythonProjects/action_recognition/jepa/weights/vitl16.pth.tar',
+    pretrained='/home/jfioresi/weights/vjepa/vitl16.pth.tar',
     model_name='vit_large',
     patch_size=16,
     crop_size=224,
@@ -825,7 +831,7 @@ def init_encoder(
     uniform_power=True,
     checkpoint_key='target_encoder'
 ):
-    encoder = vit_huge(
+    encoder = vit_large(
         img_size=crop_size,
         patch_size=patch_size,
         num_frames=frames_per_clip,
@@ -849,7 +855,7 @@ def init_classifier(encoder, num_classes=400, depth=1, device=torch.device('cuda
         depth=depth
     )
     classifier.to(device)
-    classifier = load_pretrained(encoder=classifier, pretrained='/home/jo869742/PythonProjects/action_recognition/jepa/weights/k400-probe.pth.tar', checkpoint_key='classifier')
+    classifier = load_pretrained(encoder=classifier, pretrained='/home/jfioresi/weights/vjepa/k400-probe.pth.tar', checkpoint_key='classifier')
     return classifier
 
 def init_vjepa():

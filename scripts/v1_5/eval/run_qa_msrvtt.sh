@@ -1,14 +1,15 @@
 
 
-CKPT_NAME="Video-LLaVA-7B"
+CKPT_NAME="videollava-7b-lora"
 model_path="checkpoints/${CKPT_NAME}"
-model_path="LanguageBind/Video-LLaVA-7B"
+# model_path="LanguageBind/Video-LLaVA-7B"
 cache_dir="./cache_dir"
 GPT_Zero_Shot_QA="eval/GPT_Zero_Shot_QA"
 video_dir="${GPT_Zero_Shot_QA}/MSRVTT_Zero_Shot_QA/videos/all"
 gt_file_question="${GPT_Zero_Shot_QA}/MSRVTT_Zero_Shot_QA/test_q.json"
 gt_file_answers="${GPT_Zero_Shot_QA}/MSRVTT_Zero_Shot_QA/test_a.json"
 output_dir="${GPT_Zero_Shot_QA}/MSRVTT_Zero_Shot_QA/${CKPT_NAME}"
+model_base="lmsys/vicuna-7b-v1.5"
 
 
 
@@ -21,6 +22,7 @@ CHUNKS=${#GPULIST[@]}
 for IDX in $(seq 0 $((CHUNKS-1))); do
   CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python3 videollava/eval/video/run_inference_video_qa.py \
       --model_path ${model_path} \
+      --model_base ${model_base} \
       --cache_dir ${cache_dir} \
       --video_dir ${video_dir} \
       --gt_file_question ${gt_file_question} \

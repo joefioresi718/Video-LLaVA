@@ -4,7 +4,7 @@ IMAGE_FOLDER="/home/jfioresi/datasets/Video-LLaVA"
 VIDEO_FOLDER="/home/jfioresi/datasets/Video-LLaVA"
 
 cd /home/jfioresi/vlm/Video-LLaVA
-HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 deepspeed videollava/train/train_mem.py \
+HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 /home/jfioresi/my-envs/videollava/bin/deepspeed videollava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --model_name_or_path lmsys/vicuna-7b-v1.5 \
     --version v1 \
