@@ -57,15 +57,15 @@ def main():
 
     for benchmark in all_benchmarks:
         print(f'Dataset: {benchmark}')
-        # try:
-        path_to_json = os.path.join(path_to_folders, benchmark, args.model_name, 'results.json')
-        with open(path_to_json, "r") as json_file:
-            results = json.load(json_file)
-            eval(results)
-        # except:
-        #     print(f'No results found for {benchmark}.')
-        #     print()
-        #     print()
+        try:
+            path_to_json = os.path.join(path_to_folders, benchmark, args.model_name, 'results.json')
+            with open(path_to_json, "r") as json_file:
+                results = json.load(json_file)
+                eval(results)
+        except:
+            print(f'No results found for {benchmark}.')
+            print()
+            print()
 
 
 if __name__ == '__main__':
