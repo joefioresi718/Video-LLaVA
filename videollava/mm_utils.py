@@ -4,7 +4,7 @@ import base64
 
 import torch
 from transformers import StoppingCriteria
-from videollava.constants import IMAGE_TOKEN_INDEX
+from videollava.constants import IMAGE_TOKEN_INDEX, VIDEO_TOKEN_INDEX
 
 
 def load_image_from_base64(image):
@@ -53,6 +53,43 @@ def tokenizer_image_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX
         input_ids.append(prompt_chunks[0][0])
 
     for x in insert_separator(prompt_chunks, [image_token_index] * (offset + 1)):
+        input_ids.extend(x[offset:])
+
+    if return_tensors is not None:
+        if return_tensors == 'pt':
+            return torch.tensor(input_ids, dtype=torch.long)
+        raise ValueError(f'Unsupported tensor type: {return_tensors}')
+    return input_ids
+
+
+def tokenizer_imagevid_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX, video_token_index=VIDEO_TOKEN_INDEX, return_tensors=None):
+    if '<video>' not in prompt:
+        return tokenizer_image_token(prompt, tokenizer, image_token_index, return_tensors)
+    prompt_chunks = [chunk for chunk in prompt.split('<image>')]
+    def split_strings(string_list, delimiter):
+        return [substring for string in string_list for substring in string.split(delimiter)]
+    # vid_idx = []
+    # for idx in range(len(prompt_chunks)):
+    #     if '<video>' in prompt_chunks[idx]:
+    #         vid_idx.append(idx)
+    prompt_chunks = split_strings(prompt_chunks, '<video>')
+    prompt_chunks = [tokenizer(chunk).input_ids for chunk in prompt_chunks]
+
+    def insert_separator(X, sep):
+        li = [ele for sublist in zip(X, [sep]*len(X)) for ele in sublist][:-1]
+        # Add video token index before last chunk.
+        # TODO: will this break in multi-conversation setting?
+        # li.insert(-1, [video_token_index]*len(sep))
+        li[-2] = [video_token_index]*len(sep)
+        return li
+
+    input_ids = []
+    offset = 0
+    if len(prompt_chunks) > 0 and len(prompt_chunks[0]) > 0 and prompt_chunks[0][0] == tokenizer.bos_token_id:
+        offset = 1
+        input_ids.append(prompt_chunks[0][0])
+
+    for i, x in enumerate(insert_separator(prompt_chunks, [image_token_index] * (offset + 1))):
         input_ids.extend(x[offset:])
 
     if return_tensors is not None:

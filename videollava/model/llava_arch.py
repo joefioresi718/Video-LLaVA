@@ -21,7 +21,7 @@ import torch.nn as nn
 from .multimodal_encoder.builder import build_image_tower, build_video_tower
 from .multimodal_projector.builder import build_vision_projector
 
-from videollava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from videollava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, VIDEO_TOKEN_INDEX
 
 
 class LlavaMetaModel:
@@ -324,7 +324,7 @@ class LlavaMetaForCausalLM(ABC):
         new_labels = []
         cur_image_idx = 0
         for batch_idx, cur_input_ids in enumerate(input_ids):
-            num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
+            num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum().item()
             # print(num_images, cur_input_ids)
             # TODO: not sure if this is correct implementation.
             if num_images == 0:
@@ -337,6 +337,8 @@ class LlavaMetaForCausalLM(ABC):
                 continue
 
             image_token_indices = [-1] + torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].tolist() + [cur_input_ids.shape[0]]
+            if self.config.ssl_encoder and num_images == 8:
+                image_token_indices.insert(-1, torch.where(cur_input_ids == VIDEO_TOKEN_INDEX)[0].item())
             cur_input_ids_noim = []
             cur_labels = labels[batch_idx]
             cur_labels_noim = []
@@ -349,7 +351,18 @@ class LlavaMetaForCausalLM(ABC):
             cur_new_input_embeds = []
             cur_new_labels = []
 
-            for i in range(num_images + 1):
+            loop_count = num_images + 2 if self.config.ssl_encoder else num_images + 1
+
+            cur_ssl_idx = 0
+
+            for i in range(loop_count):
+                # TODO: this may break in multi-conversation setting.
+                if i != 0 and i % 8 == 0 and self.config.ssl_encoder:
+                    cur_vid_features = ssl_features[batch_idx + cur_ssl_idx]
+                    cur_new_input_embeds.append(cur_vid_features)
+                    cur_new_labels.append(torch.full((cur_vid_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
+                    cur_ssl_idx += 1 # TODO: not sure if such logic is necessary.
+                    continue
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
                 if i < num_images:
@@ -359,10 +372,12 @@ class LlavaMetaForCausalLM(ABC):
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
 
+            # cur_new_input_embeds = [x.to(self.device) for x in cur_new_input_embeds]
+
             # curr_new_input_embeds.append(ssl_features[])
-            if num_images == 8 and self.config.ssl_encoder: # TODO: set to num frames.
-                cur_new_input_embeds.append(ssl_features[batch_idx])
-                cur_new_labels.append(torch.full((ssl_features[batch_idx].shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
+            # if num_images == 8 and self.config.ssl_encoder: # TODO: set to num frames.
+            #     cur_new_input_embeds.append(ssl_features[batch_idx])
+            #     cur_new_labels.append(torch.full((ssl_features[batch_idx].shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
 
             cur_new_input_embeds = torch.cat(cur_new_input_embeds)
             cur_new_labels = torch.cat(cur_new_labels)

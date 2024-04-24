@@ -21,7 +21,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, BitsAn
 import torch
 from videollava.model import *
 from videollava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, \
-    DEFAULT_VIDEO_PATCH_TOKEN, DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN
+    DEFAULT_VIDEO_PATCH_TOKEN, DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN, VIDEO_TOKEN_INDEX
 
 
 def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", ssl_encoder=False, **kwargs):
@@ -142,6 +142,8 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
         if mm_use_im_start_end:
             tokenizer.add_tokens([DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN], special_tokens=True)
             tokenizer.add_tokens([DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN], special_tokens=True)
+        if ssl_encoder:
+            tokenizer.add_tokens([VIDEO_TOKEN_INDEX], special_tokens=True)
         model.resize_token_embeddings(len(tokenizer))
 
         if model.config.mm_image_tower is not None:
@@ -160,10 +162,11 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             video_processor = video_tower.video_processor
             processor['video'] = video_processor
             
-        if model.config.ssl_tower is not None:
+        if ssl_encoder:
             ssl_tower = model.get_ssl_tower()
-            if ssl_tower is not None:
-                ssl_tower.to(device=device, dtype=torch.float16)
+            if not ssl_tower.is_loaded:
+                ssl_tower.load_model()
+            ssl_tower.to(device=device, dtype=torch.float16)
             ssl_processor = ssl_tower.ssl_processor
             processor['ssl'] = ssl_processor
     # ==========================================================================================================

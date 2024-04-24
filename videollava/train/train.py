@@ -35,7 +35,7 @@ from videollava.train.llava_trainer import LLaVATrainer
 
 from videollava import conversation as conversation_lib
 from videollava.model import *
-from videollava.mm_utils import tokenizer_image_token
+from videollava.mm_utils import tokenizer_image_token, tokenizer_imagevid_token
 
 from PIL import Image
 from videollava.utils import order_pick_k
@@ -81,6 +81,7 @@ class DataArguments:
     image_folder: Optional[str] = field(default=None)
     video_folder: Optional[str] = field(default=None)
     num_frames: int = 8
+    ssl_data: bool = False
     # ===================================================================
 
 
@@ -345,7 +346,8 @@ def preprocess_multimodal(
                     sentence['value'] = sentence['value'].replace(DEFAULT_VIDEO_TOKEN * VIDEO_TOKEN_NUM, DEFAULT_VIDEO_TOKEN * MAX_VIDEO_LENGTH).strip()
 
             # a <video> is treated as `num_frames * <image>`
-            replace_token, vid_replace_token = DEFAULT_IMAGE_TOKEN, DEFAULT_IMAGE_TOKEN * data_args.num_frames
+            replace_token = DEFAULT_IMAGE_TOKEN
+            vid_replace_token = DEFAULT_IMAGE_TOKEN * data_args.num_frames + DEFAULT_VIDEO_TOKEN if data_args.ssl_data else DEFAULT_IMAGE_TOKEN * data_args.num_frames
             if data_args.mm_use_im_start_end:
                 replace_token = DEFAULT_IM_START_TOKEN + replace_token + DEFAULT_IM_END_TOKEN
                 vid_replace_token = DEFAULT_VID_START_TOKEN + vid_replace_token + DEFAULT_VID_END_TOKEN
@@ -446,7 +448,8 @@ def preprocess_llama_2(
 def preprocess_v1(
     sources,
     tokenizer: transformers.PreTrainedTokenizer,
-    has_image: bool = False
+    has_image: bool = False,
+    has_video: bool = False
 ) -> Dict:
     conv = conversation_lib.default_conversation.copy()
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
@@ -466,8 +469,9 @@ def preprocess_v1(
         conversations.append(conv.get_prompt())
 
     # Tokenize conversations
-
-    if has_image:
+    if has_video:
+        input_ids = torch.stack([tokenizer_imagevid_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
+    elif has_image:
         input_ids = torch.stack([tokenizer_image_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
     else:
         input_ids = tokenizer(
@@ -499,7 +503,10 @@ def preprocess_v1(
                 break
             parts[0] += sep
 
-            if has_image:
+            if has_video:
+                round_len = len(tokenizer_imagevid_token(rou, tokenizer))
+                instruction_len = len(tokenizer_imagevid_token(parts[0], tokenizer)) - 2
+            elif has_image:
                 round_len = len(tokenizer_image_token(rou, tokenizer))
                 instruction_len = len(tokenizer_image_token(parts[0], tokenizer)) - 2
             else:
@@ -616,7 +623,8 @@ def preprocess_plain(
 def preprocess(
     sources: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
-    has_image: bool = False
+    has_image: bool = False,
+    has_video: bool = False
 ) -> Dict:
     """
     Given a list of sources, each is a conversation list. This transform:
@@ -630,7 +638,7 @@ def preprocess(
     if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.LLAMA_2:
         return preprocess_llama_2(sources, tokenizer, has_image=has_image)
     if conversation_lib.default_conversation.version.startswith("v1"):
-        return preprocess_v1(sources, tokenizer, has_image=has_image)
+        return preprocess_v1(sources, tokenizer, has_image=has_image, has_video=has_video)
     if conversation_lib.default_conversation.version == "mpt":
         return preprocess_mpt(sources, tokenizer)
     # add end signal and concatenate together
@@ -754,7 +762,7 @@ class LazySupervisedDataset(Dataset):
                 # image = [torch.randn(3, 8, 224, 224) for i in video]  # fake image
                 sources = preprocess_multimodal(copy.deepcopy([e["conversations"] for e in sources]), self.data_args)
                 # print('after preprocess_multimodal', sources[0])
-                data_dict = preprocess(sources, self.tokenizer, has_image=True)
+                data_dict = preprocess(sources, self.tokenizer, has_image=True, has_video=True)
                 # print('after preprocess', data_dict['input_ids'])
 
             elif 'image' in sources[0] and 'video' in sources[0]:
@@ -1045,14 +1053,22 @@ def train():
             model.requires_grad_(False)
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = True
+            if model_args.ssl_tower is not None:
+                for p in model.get_model().ssl_projector.parameters():
+                    p.requires_grad = True
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
         if training_args.freeze_mm_mlp_adapter:
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = False
+            if model_args.ssl_tower is not None:
+                for p in model.get_model().ssl_projector.parameters():
+                    p.requires_grad = False
 
         if training_args.bits in [4, 8]:
             model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
+            if model_args.ssl_tower is not None:
+                model.get_model().ssl_projector.to(dtype=compute_dtype, device=training_args.device)
 
         model.config.mm_use_im_start_end = data_args.mm_use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_projector_lr = training_args.mm_projector_lr
