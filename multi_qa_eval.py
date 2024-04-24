@@ -62,7 +62,7 @@ def main():
         print(path_to_json)
         with open(path_to_json, "r") as json_file:
             results = json.load(json_file)
-        eval(results)
+            eval(results)
         # except:
         #     print(f'No results found for {benchmark}.')
         #     print()
