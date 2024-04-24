@@ -1,5 +1,5 @@
 import json
-import tqdm
+from tqdm import tqdm
 import os
 import argparse
 
@@ -59,7 +59,6 @@ def main():
         print(f'Dataset: {benchmark}')
         # try:
         path_to_json = os.path.join(path_to_folders, benchmark, args.model_name, 'results.json')
-        print(path_to_json)
         with open(path_to_json, "r") as json_file:
             results = json.load(json_file)
             eval(results)
