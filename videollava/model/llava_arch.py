@@ -33,8 +33,9 @@ class LlavaMetaModel:
             self.image_tower = build_image_tower(config, delay_load=True)
         if getattr(config, "mm_video_tower", None) is not None:
             self.video_tower = build_video_tower(config, load_model='clip', delay_load=True)
-            self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
-            self.ssl_projector = build_vision_projector(config)
+            if config.ssl_encoder:
+                self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
+                self.ssl_projector = build_vision_projector(config)
         if getattr(config, "mm_image_tower", None) is not None or getattr(config, "mm_video_tower", None) is not None:
             self.mm_projector = build_vision_projector(config)
 
@@ -351,7 +352,7 @@ class LlavaMetaForCausalLM(ABC):
             cur_new_input_embeds = []
             cur_new_labels = []
 
-            loop_count = num_images + 2 if self.config.ssl_encoder else num_images + 1
+            loop_count = num_images + 2 if num_images == 8 and self.config.ssl_encoder else num_images + 1
 
             cur_ssl_idx = 0
 

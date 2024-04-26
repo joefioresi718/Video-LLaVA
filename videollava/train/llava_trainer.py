@@ -164,7 +164,7 @@ class LLaVATrainer(Trainer):
         if self.optimizer is None:
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            if self.args.mm_projector_lr is not None:
+            if self.args.mm_projector_lr is not None and self.args.ssl_projector_lr is None:
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 optimizer_grouped_parameters = [
                     {
@@ -192,6 +192,51 @@ class LLaVATrainer(Trainer):
                         ],
                         "weight_decay": 0.0,
                         "lr": self.args.mm_projector_lr,
+                    },
+                ]
+            elif self.args.mm_projector_lr is None and self.args.ssl_projector_lr is not None:
+                projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
+                ssl_projector_parameters = [name for name, _ in opt_model.named_parameters() if "ssl_projector" in name]
+                optimizer_grouped_parameters = [
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and n not in ssl_projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and n not in ssl_projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                        "lr": self.args.mm_projector_lr,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                        "lr": self.args.mm_projector_lr,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in ssl_projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                        "lr": self.args.ssl_projector_lr,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in ssl_projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                        "lr": self.args.ssl_projector_lr,
                     },
                 ]
             else:
@@ -254,6 +299,18 @@ class LLaVATrainer(Trainer):
             if self.args.local_rank == 0 or self.args.local_rank == -1:
                 self.model.config.save_pretrained(output_dir)
                 torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
+
+            # Save SSL Adapter
+            keys_to_match = ['ssl_projector']
+            if getattr(self.args, "use_im_start_end", False):
+                keys_to_match.extend(['embed_tokens', 'embed_in'])
+
+            weight_to_save = get_mm_adapter_state_maybe_zero_3(self.model.named_parameters(), keys_to_match)
+
+            if self.args.local_rank == 0 or self.args.local_rank == -1:
+                self.model.config.save_pretrained(output_dir)
+                torch.save(weight_to_save, os.path.join(output_dir, f'ssl_projector.bin'))
+            
         else:
             super(LLaVATrainer, self)._save_checkpoint(model, trial, metrics)
 

@@ -118,6 +118,7 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_weight_path: str = ""
     lora_bias: str = "none"
     mm_projector_lr: Optional[float] = None
+    ssl_projector_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
 
     # ================================================
@@ -216,6 +217,25 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
                 torch.save(weight_to_save, os.path.join(mm_projector_folder, f'{current_folder}.bin'))
             else:
                 torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
+
+        # Save SSL Adapter
+        keys_to_match = ['ssl_projector']
+        if getattr(trainer.args, "use_im_start_end", False):
+            keys_to_match.extend(['embed_tokens', 'embed_in'])
+
+        weight_to_save = get_mm_adapter_state_maybe_zero_3(trainer.model.named_parameters(), keys_to_match)
+        trainer.model.config.save_pretrained(output_dir)
+
+        current_folder = output_dir.split('/')[-1]
+        parent_folder = os.path.dirname(output_dir)
+        if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
+            if current_folder.startswith('checkpoint-'):
+                ssl_projector_folder = os.path.join(parent_folder, "ssl_projector")
+                os.makedirs(ssl_projector_folder, exist_ok=True)
+                torch.save(weight_to_save, os.path.join(ssl_projector_folder, f'{current_folder}.bin'))
+            else:
+                torch.save(weight_to_save, os.path.join(output_dir, f'ssl_projector.bin'))
+        
         return
 
     if trainer.deepspeed:
@@ -793,7 +813,7 @@ class LazySupervisedDataset(Dataset):
                 image = video + image  # video must before image
 
                 sources = preprocess_multimodal(copy.deepcopy([e["conversations"] for e in sources]), self.data_args)
-                data_dict = preprocess(sources, self.tokenizer, has_image=True)
+                data_dict = preprocess(sources, self.tokenizer, has_image=True, has_video=True)
             else:
                 sources = copy.deepcopy([e["conversations"] for e in sources])
                 data_dict = preprocess(sources, self.tokenizer, has_image=False)

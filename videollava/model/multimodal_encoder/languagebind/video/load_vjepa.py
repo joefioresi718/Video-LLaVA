@@ -818,7 +818,7 @@ def load_pretrained(
 
 def init_encoder(
     device=torch.device('cuda:0'),
-    pretrained='/home/jfioresi/weights/vjepa/vitl16.pth.tar',
+    pretrained='/home/jo869742/PythonProjects/models/video/jepa/weights/vitl16.pth.tar',
     model_name='vit_large',
     patch_size=16,
     crop_size=224,
@@ -842,7 +842,7 @@ def init_encoder(
         tight_SiLU=tight_SiLU,
     )
 
-    encoder.to(device)
+    # encoder.to(device)
     encoder = load_pretrained(encoder=encoder, pretrained=pretrained, checkpoint_key=checkpoint_key)
     return encoder
 
@@ -855,7 +855,7 @@ def init_classifier(encoder, num_classes=400, depth=1, device=torch.device('cuda
         depth=depth
     )
     classifier.to(device)
-    classifier = load_pretrained(encoder=classifier, pretrained='/home/jfioresi/weights/vjepa/k400-probe.pth.tar', checkpoint_key='classifier')
+    classifier = load_pretrained(encoder=classifier, pretrained='/home/jo869742/PythonProjects/models/video/jepa/weights/k400-probe.pth.tar', checkpoint_key='classifier')
     return classifier
 
 def init_vjepa():
