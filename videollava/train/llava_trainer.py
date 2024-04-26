@@ -194,7 +194,7 @@ class LLaVATrainer(Trainer):
                         "lr": self.args.mm_projector_lr,
                     },
                 ]
-            elif self.args.mm_projector_lr is None and self.args.ssl_projector_lr is not None:
+            elif self.args.mm_projector_lr is not None and self.args.ssl_projector_lr is not None:
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 ssl_projector_parameters = [name for name, _ in opt_model.named_parameters() if "ssl_projector" in name]
                 optimizer_grouped_parameters = [
