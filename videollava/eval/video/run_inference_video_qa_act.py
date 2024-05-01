@@ -7,8 +7,8 @@ import torch
 import transformers
 from tqdm import tqdm
 from videollava.conversation import conv_templates, SeparatorStyle
-from videollava.constants import DEFAULT_IM_START_TOKEN, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_END_TOKEN, IMAGE_TOKEN_INDEX, DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN
-from videollava.mm_utils import get_model_name_from_path, tokenizer_image_token, KeywordsStoppingCriteria
+from videollava.constants import DEFAULT_IM_START_TOKEN, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_END_TOKEN, IMAGE_TOKEN_INDEX, DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN, VIDEO_TOKEN_INDEX, DEFAULT_VIDEO_TOKEN
+from videollava.mm_utils import get_model_name_from_path, tokenizer_image_token, tokenizer_imagevid_token, KeywordsStoppingCriteria
 from videollava.model.builder import load_pretrained_model
 from videollava.model.language_model.llava_llama import LlavaLlamaForCausalLM
 from videollava.train.train import smart_tokenizer_and_embedding_resize
@@ -43,12 +43,15 @@ def parse_args():
     parser.add_argument("--device", type=str, required=False, default='cuda:0')
     parser.add_argument('--model_base', help='', default=None, type=str, required=False)
     parser.add_argument("--model_max_length", type=int, required=False, default=2048)
+    parser.add_argument("--ssl_encoder", action='store_true', required=False, default=False)
 
     return parser.parse_args()
 
 def get_model_output(model, video_processor, tokenizer, video, qs, args):
     if model.config.mm_use_im_start_end:
         qs = DEFAULT_VID_START_TOKEN + ''.join([DEFAULT_IMAGE_TOKEN]*8) + DEFAULT_VID_END_TOKEN + '\n' + qs
+    elif args.ssl_encoder:
+        qs = ''.join([DEFAULT_IMAGE_TOKEN] * model.get_video_tower().config.num_frames) + '' + DEFAULT_VIDEO_TOKEN + '\n' + qs
     else:
         qs = ''.join([DEFAULT_IMAGE_TOKEN]*8) + '\n' + qs
 
@@ -63,7 +66,10 @@ def get_model_output(model, video_processor, tokenizer, video, qs, args):
 
     video_tensor = video_processor.preprocess(video, return_tensors='pt')['pixel_values'][0].half().to(args.device)
     # print(video_tensor.shape)
-    input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(args.device)
+    if args.ssl_encoder:
+        input_ids = tokenizer_imagevid_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, VIDEO_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(args.device)
+    else:
+        input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(args.device)
 
     stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
     keywords = [stop_str]
@@ -102,7 +108,7 @@ def run_inference(args):
     """
     # Initialize the model
     model_name = get_model_name_from_path(args.model_path)
-    tokenizer, model, processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name)
+    tokenizer, model, processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, ssl_encoder=args.ssl_encoder)
     model = model.to(args.device)
 
     # Load both ground truth file containing questions and answers
@@ -141,7 +147,7 @@ def run_inference(args):
         sample_set = {'id': id, 'question': question, 'answer': answer}
 
         # Load the video file
-        for fmt in tqdm(video_formats):  # Added this line
+        for fmt in video_formats:  # Added this line
             temp_path = os.path.join(args.video_dir, f"v_{video_name}{fmt}")
             if os.path.exists(temp_path):
                 video_path = temp_path
