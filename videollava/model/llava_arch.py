@@ -105,7 +105,7 @@ class LlavaMetaModel:
                 video_tower.load_model()
 
         if self.config.ssl_encoder:
-            self.config.mm_ssl_tower = ssl_tower
+            self.config.ssl_tower = ssl_tower
             if ssl_tower is not None:
                 if self.get_ssl_tower() is None:
                     ssl_tower = build_video_tower(model_args, load_model='ssl')
@@ -182,7 +182,10 @@ class LlavaMetaForCausalLM(ABC):
 
     def encode_images(self, images):
         image_features = self.get_model().get_image_tower()(images)
+        ssl_features = self.get_model().ssl_projector(torch.zeros_like(image_features, dtype=torch.bfloat16, device=images.device))
         image_features = self.get_model().mm_projector(image_features)
+        # Protect against the case where there are no videos.
+        image_features = torch.cat((image_features, ssl_features[0].unsqueeze(0)), dim=0)
         return image_features
 
     def encode_videos(self, videos):  # [mini_b, c, t, h, w]
@@ -195,6 +198,7 @@ class LlavaMetaForCausalLM(ABC):
         b, _, t, _, _ = videos.shape
         video_features = self.get_model().get_ssl_tower()(videos)  # [mini_b, t, n, c]
         video_features = self.get_model().ssl_projector(video_features)
+        # video_features = torch.randn((b, t, 4096), dtype=torch.bfloat16, device=videos.device)
         return video_features
 
     def prepare_inputs_labels_for_multimodal(
@@ -248,7 +252,7 @@ class LlavaMetaForCausalLM(ABC):
         videos_minibatch = torch.stack([images[idx] for idx in video_idx]) if len(video_idx) > 0 else []  # mini_b c t h w
 
         tmp_image_features = [None] * (len(image_idx) + len(video_idx))
-        tmp_ssl_features = [None] * (len(image_idx) + len(video_idx))
+        # tmp_ssl_features = [None] * (len(image_idx) + len(video_idx))
         if getattr(images_minibatch, 'ndim', 0) == 4:  # batch consists of images, [mini_b, c, h, w]
             if image_tower is not None:
                 image_features_minibatch = self.encode_images(images_minibatch)  # [mini_b, l, c]
@@ -263,9 +267,9 @@ class LlavaMetaForCausalLM(ABC):
                 t = video_features_minibatch[i].shape[0]
                 tmp_image_features[pos] = [video_features_minibatch[i][j] for j in range(t)]
             if self.config.ssl_encoder:
-                ssl_features_minibatch = self.encode_ssl_videos(videos_minibatch)  # fake list [mini_b, t, l, c]
-                for i, pos in enumerate(video_idx):
-                    tmp_ssl_features[pos] = ssl_features_minibatch[i]
+                ssl_features = self.encode_ssl_videos(videos_minibatch)  # fake list [mini_b, t, l, c]
+                # for i, pos in enumerate(video_idx):
+                #     tmp_ssl_features[pos] = ssl_features_minibatch[i]
 
         new_tmp = []
         for image in tmp_image_features:
@@ -279,16 +283,17 @@ class LlavaMetaForCausalLM(ABC):
                 new_tmp.append(image)
         image_features = new_tmp
 
-        if self.config.ssl_encoder and len(video_idx) > 0:
-            new_tmp_ssl = []
-            for image in tmp_ssl_features:
-                if isinstance(image, list):
-                    t = len(image)
-                    for i in range(t):
-                        new_tmp_ssl.append(image[i])
-                else:
-                    new_tmp_ssl.append(image)
-            ssl_features = new_tmp_ssl
+        # if self.config.ssl_encoder and len(video_idx) > 0:
+        #     new_tmp_ssl = []
+        #     for image in tmp_ssl_features:
+        #         if isinstance(image, list):
+        #             t = len(image)
+        #             for i in range(t):
+        #                 new_tmp_ssl.append(image[i])
+        #         else:
+        #             new_tmp_ssl.append(image)
+        #     ssl_features = new_tmp_ssl
+        #     ssl_features = [x for x in ssl_features if x is not None]
 
         # if len(video_idx) > 0:
         #     print(len(image_features), *[i.shape for i in image_features])
@@ -324,6 +329,7 @@ class LlavaMetaForCausalLM(ABC):
         new_input_embeds = []
         new_labels = []
         cur_image_idx = 0
+        cur_ssl_idx = 0
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum().item()
             # print(num_images, cur_input_ids)
@@ -354,18 +360,15 @@ class LlavaMetaForCausalLM(ABC):
 
             loop_count = num_images + 2 if num_images == 8 and self.config.ssl_encoder else num_images + 1
 
-            cur_ssl_idx = 0
-
             for i in range(loop_count):
-                # TODO: this may break in multi-conversation setting.
-                if i != 0 and i % 8 == 0 and self.config.ssl_encoder:
-                    cur_vid_features = ssl_features[batch_idx + cur_ssl_idx]
-                    cur_new_input_embeds.append(cur_vid_features)
-                    cur_new_labels.append(torch.full((cur_vid_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
-                    cur_ssl_idx += 1 # TODO: not sure if such logic is necessary.
-                    continue
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
+                # TODO: this may break in multi-conversation setting.
+                if i != 0 and i % 8 == 0 and self.config.ssl_encoder:
+                    cur_vid_features = ssl_features[cur_ssl_idx]
+                    cur_ssl_idx += 1
+                    cur_new_input_embeds.append(cur_vid_features)
+                    cur_new_labels.append(torch.full((cur_vid_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
                 if i < num_images:
                     # print(cur_image_idx)
                     cur_image_features = image_features[cur_image_idx]
@@ -373,13 +376,13 @@ class LlavaMetaForCausalLM(ABC):
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
 
-            # cur_new_input_embeds = [x.to(self.device) for x in cur_new_input_embeds]
 
             # curr_new_input_embeds.append(ssl_features[])
             # if num_images == 8 and self.config.ssl_encoder: # TODO: set to num frames.
             #     cur_new_input_embeds.append(ssl_features[batch_idx])
             #     cur_new_labels.append(torch.full((ssl_features[batch_idx].shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
 
+            cur_new_input_embeds = [x.to(device=self.device) for x in cur_new_input_embeds]
             cur_new_input_embeds = torch.cat(cur_new_input_embeds)
             cur_new_labels = torch.cat(cur_new_labels)
 
