@@ -6,6 +6,7 @@ from multiprocessing.pool import Pool
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from hqq.engine.hf import HQQModelForCausalLM
 
 
 def parse_args():
@@ -139,28 +140,29 @@ def main():
 
     bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
     # bnb_config = BitsAndBytesConfig(load_in_8bit=True)
-    model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', torch_dtype=torch.bfloat16, cache_dir='cache_dir', quantization_config=bnb_config)
+    # model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', torch_dtype=torch.bfloat16, cache_dir='cache_dir', quantization_config=bnb_config)
+    model = HQQModelForCausalLM.from_quantized(f'cache_dir/Meta-Llama-3-70B-Instruct-4bit-bf16-hqq', device='cuda', compute_dtype=torch.bfloat16)
     tokenizer = AutoTokenizer.from_pretrained(llm_model, cache_dir='cache_dir')
 
     # While loop to ensure that all captions are processed.
     while True:
-        try:
-            # Files that have not been processed yet.
-            completed_files = sorted(os.listdir(output_dir))
-            print(f"completed_files: {len(completed_files)}")
+        # try:
+        # Files that have not been processed yet.
+        completed_files = sorted(os.listdir(output_dir))
+        print(f"completed_files: {len(completed_files)}")
 
-            # Files that have not been processed yet.
-            incomplete_files = [f for f in caption_files if f not in completed_files]
-            print(f"incomplete_files: {len(incomplete_files)}")
+        # Files that have not been processed yet.
+        incomplete_files = [f for f in caption_files if f not in completed_files]
+        print(f"incomplete_files: {len(incomplete_files)}")
 
-            # Break the loop when there are no incomplete files
-            if len(incomplete_files) == 0:
-                break
+        # Break the loop when there are no incomplete files
+        if len(incomplete_files) == 0:
+            break
 
-            annotate(prediction_set, incomplete_files, output_dir, model, tokenizer, args)
+        annotate(prediction_set, incomplete_files, output_dir, model, tokenizer, args)
 
-        except Exception as e:
-            print(f"Error: {e}")
+        # except Exception as e:
+        #     print(f"Error: {e}")
 
     # Combine all the processed files into one
     combined_contents = {}
@@ -211,4 +213,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
