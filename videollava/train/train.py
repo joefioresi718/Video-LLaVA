@@ -722,7 +722,8 @@ class LazySupervisedDataset(Dataset):
         self.list_data_dict = list_data_dict
         self.data_args = data_args
         img_zip = '/llava_image_tune.zip' if 'tune' in data_path[0] else '/llava_image.zip'
-        self.zipfile = zipfile.ZipFile(data_args.image_folder + img_zip, 'r')
+        # self.zipfile = zipfile.ZipFile(data_args.image_folder + img_zip, 'r')
+        self.zipfile = data_args.image_folder + img_zip
 
     def __len__(self):
         return len(self.list_data_dict)
@@ -761,7 +762,9 @@ class LazySupervisedDataset(Dataset):
                 image_file = order_pick_k(image_file, MAX_IMAGE_LENGTH)
                 # print(f"total {len(self.list_data_dict[i]['image'])} now {len(image_file)}")
                 # image = [Image.open(os.path.join(image_folder, file)).convert('RGB') for file in image_file]
-                image = [Image.open(self.zipfile.open(file)).convert('RGB') for file in image_file]
+                with zipfile.ZipFile(self.zipfile, 'r') as z:
+                    image = [Image.open(z.open(file)).convert('RGB') for file in image_file]
+                # image = [Image.open(self.zipfile.open(file)).convert('RGB') for file in image_file]
                 if self.data_args.image_aspect_ratio == 'pad':
                     image = [expand2square(i, tuple(int(x * 255) for x in image_processor.image_mean)) for i in image]
                     image = [image_processor.preprocess(i, return_tensors='pt')['pixel_values'][0] for i in image]
