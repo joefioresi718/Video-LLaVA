@@ -120,6 +120,7 @@ class TrainingArguments(transformers.TrainingArguments):
     mm_projector_lr: Optional[float] = None
     ssl_projector_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
+    ssl_proj_pretrain: bool = field(default=False)
 
     # ================================================
     tokenizer_model_max_length: Optional[int] = None
