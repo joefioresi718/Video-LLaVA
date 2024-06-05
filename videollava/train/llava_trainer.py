@@ -255,6 +255,35 @@ class LLaVATrainer(Trainer):
                         "lr": self.args.ssl_projector_lr,
                     },
                 ]
+            elif self.args.ssl_proj_pretrain:
+                optimizer_grouped_parameters = [
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad and "ssl_projector" not in n)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad and "ssl_projector" not in n)
+                        ],
+                        "weight_decay": 0.0,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad and "ssl_projector" in n)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                        "lr": self.args.ssl_projector_lr,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad and "ssl_projector" in n)
+                        ],
+                        "weight_decay": 0.0,
+                        "lr": self.args.ssl_projector_lr,
+                    },
+                ]
             else:
                 optimizer_grouped_parameters = [
                     {
