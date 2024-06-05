@@ -847,23 +847,38 @@ def init_encoder(
     return encoder
 
 
-def init_classifier(encoder, num_classes=400, depth=1, device=torch.device('cuda:0')):
+def init_classifier(encoder, num_classes=400, depth=1, device=torch.device('cuda:0'), dataset='kinetics400'):
     classifier = AttentiveClassifier(
         embed_dim=encoder.embed_dim,
         num_heads=encoder.num_heads,
         num_classes=num_classes,
         depth=depth
     )
-    classifier.to(device)
-    classifier = load_pretrained(encoder=classifier, pretrained='/home/jo869742/PythonProjects/models/video/jepa/weights/k400-probe.pth.tar', checkpoint_key='classifier')
+    # classifier.to(device)
+    if dataset == 'k400':
+        pretrained = '/home/jo869742/PythonProjects/models/video/jepa/weights/k400-probe.pth.tar'
+    elif dataset == 'ssv2':
+        pretrained = '/home/jo869742/PythonProjects/models/video/jepa/weights/ssv2-probe.pth.tar'
+    classifier = load_pretrained(encoder=classifier, pretrained=pretrained, checkpoint_key='classifier')
     return classifier
 
-def init_vjepa():
+def init_vjepa(ds='k400'):
     encoder = init_encoder()
-    classifier = init_classifier(encoder)
+    classifier = init_classifier(encoder, dataset=ds)
     return encoder, classifier
 
+def init_pooler():
+    _, classifier = init_vjepa(ds='ssv2')
+    return classifier.pooler
+
+
 if __name__ == '__main__':
+    pooler = init_pooler()
+    print(pooler)
+    input = torch.rand(1, 247, 1024)
+    out = pooler(input)
+    print(out.shape)
+    exit()
     # -- init model
     encoder, classifier = init_vjepa()
 

@@ -197,6 +197,8 @@ class LLaVATrainer(Trainer):
             elif self.args.mm_projector_lr is not None and self.args.ssl_projector_lr is not None:
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 ssl_projector_parameters = [name for name, _ in opt_model.named_parameters() if "ssl_projector" in name]
+                ssl_pooler_parameters = [name for name, _ in opt_model.named_parameters() if "ssl_pooler" in name]
+                print(ssl_pooler_parameters)
                 optimizer_grouped_parameters = [
                     {
                         "params": [
@@ -234,6 +236,20 @@ class LLaVATrainer(Trainer):
                     {
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in ssl_projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                        "lr": self.args.ssl_projector_lr,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in ssl_pooler_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                        "lr": self.args.ssl_projector_lr,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in ssl_pooler_parameters and p.requires_grad)
                         ],
                         "weight_decay": 0.0,
                         "lr": self.args.ssl_projector_lr,
@@ -310,6 +326,14 @@ class LLaVATrainer(Trainer):
             if self.args.local_rank == 0 or self.args.local_rank == -1:
                 self.model.config.save_pretrained(output_dir)
                 torch.save(weight_to_save, os.path.join(output_dir, f'ssl_projector.bin'))
+
+            # Save SSL Pooler
+            keys_to_match = ['ssl_pooler']
+            weight_to_save = get_mm_adapter_state_maybe_zero_3(self.model.named_parameters(), keys_to_match)
+
+            if self.args.local_rank == 0 or self.args.local_rank == -1:
+                self.model.config.save_pretrained(output_dir)
+                torch.save(weight_to_save, os.path.join(output_dir, f'ssl_pooler.bin'))
             
         else:
             super(LLaVATrainer, self)._save_checkpoint(model, trial, metrics)

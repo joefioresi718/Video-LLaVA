@@ -28,7 +28,7 @@ from .thermal.modeling_thermal import LanguageBindThermal
 from .thermal.tokenization_thermal import LanguageBindThermalTokenizer
 from .thermal.processing_thermal import LanguageBindThermalProcessor
 
-from .video.load_vjepa import init_encoder
+from .video.load_vjepa import init_encoder, init_pooler
 
 
 
@@ -282,19 +282,20 @@ class SSLVideoTower(nn.Module):
     def load_model(self):
         # model = LanguageBindVideo.from_pretrained(self.video_tower_name, cache_dir=self.cache_dir)
         # self.video_processor = LanguageBindVideoProcessor(model.config)
-        self.ssl_processor = trans.Compose([
-                trans.Resize(size=224, interpolation=trans.InterpolationMode.BILINEAR, antialias=False),
-                trans.CenterCrop(size=(224, 224)),
-                trans.ToPILImage(),
-                trans.ToTensor(),  # Converts to tensor & scales to [0,1]
-                trans.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
+        # self.ssl_processor = trans.Compose([
+        #         trans.Resize(size=224, interpolation=trans.InterpolationMode.BILINEAR, antialias=False),
+        #         trans.CenterCrop(size=(224, 224)),
+        #         trans.ToPILImage(),
+        #         trans.ToTensor(),  # Converts to tensor & scales to [0,1]
+        #         trans.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        #     ])
 
 
         # model = LanguageBindImage.from_pretrained('LanguageBind/LanguageBind_Image', cache_dir=self.cache_dir)
 
         self.ssl_tower = init_encoder()
         self.ssl_tower.requires_grad_(False)
+        self.ssl_pooler = init_pooler()
 
         self.is_loaded = True
 

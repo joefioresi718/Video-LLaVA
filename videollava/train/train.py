@@ -235,6 +235,21 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
                 torch.save(weight_to_save, os.path.join(ssl_projector_folder, f'{current_folder}.bin'))
             else:
                 torch.save(weight_to_save, os.path.join(output_dir, f'ssl_projector.bin'))
+
+        # Save SSL Pooler
+        keys_to_match = ['ssl_pooler']
+        weight_to_save = get_mm_adapter_state_maybe_zero_3(trainer.model.named_parameters(), keys_to_match)
+        trainer.model.config.save_pretrained(output_dir)
+
+        current_folder = output_dir.split('/')[-1]
+        parent_folder = os.path.dirname(output_dir)
+        if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
+            if current_folder.startswith('checkpoint-'):
+                ssl_pooler_folder = os.path.join(parent_folder, "ssl_pooler")
+                os.makedirs(ssl_pooler_folder, exist_ok=True)
+                torch.save(weight_to_save, os.path.join(ssl_pooler_folder, f'{current_folder}.bin'))
+            else:
+                torch.save(weight_to_save, os.path.join(output_dir, f'ssl_pooler.bin'))
         
         return
 
@@ -1077,6 +1092,9 @@ def train():
                 p.requires_grad = True
             if model_args.ssl_tower is not None:
                 for p in model.get_model().ssl_projector.parameters():
+                    p.requires_grad = True
+
+                for p in ssl_tower.ssl_pooler.parameters():
                     p.requires_grad = True
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
