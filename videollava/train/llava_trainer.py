@@ -198,7 +198,6 @@ class LLaVATrainer(Trainer):
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 ssl_projector_parameters = [name for name, _ in opt_model.named_parameters() if "ssl_projector" in name]
                 ssl_pooler_parameters = [name for name, _ in opt_model.named_parameters() if "ssl_pooler" in name]
-                print(ssl_pooler_parameters)
                 optimizer_grouped_parameters = [
                     {
                         "params": [
