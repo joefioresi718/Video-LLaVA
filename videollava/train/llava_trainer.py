@@ -202,13 +202,13 @@ class LLaVATrainer(Trainer):
                 optimizer_grouped_parameters = [
                     {
                         "params": [
-                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and n not in ssl_projector_parameters and p.requires_grad)
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and n not in ssl_projector_parameters and n not in ssl_pooler_parameters and p.requires_grad)
                         ],
                         "weight_decay": self.args.weight_decay,
                     },
                     {
                         "params": [
-                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and n not in ssl_projector_parameters and p.requires_grad)
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and n not in ssl_projector_parameters and n not in ssl_pooler_parameters and p.requires_grad)
                         ],
                         "weight_decay": 0.0,
                     },
