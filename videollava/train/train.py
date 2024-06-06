@@ -1076,6 +1076,7 @@ def train():
         if model_args.ssl_tower is not None:
             ssl_tower = model.get_ssl_tower()
             ssl_tower.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
+            # ssl_tower.ssl_pooler.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
     # =============================================================================================================
 
         model.config.image_aspect_ratio = data_args.image_aspect_ratio
@@ -1095,8 +1096,8 @@ def train():
                 for p in model.get_model().ssl_projector.parameters():
                     p.requires_grad = True
 
-                for p in ssl_tower.ssl_pooler.parameters():
-                    p.requires_grad = True
+                # for p in ssl_tower.ssl_pooler.parameters():
+                #     p.requires_grad = True
 
         model.config.freeze_mm_mlp_adapter = training_args.freeze_mm_mlp_adapter
         if training_args.freeze_mm_mlp_adapter:

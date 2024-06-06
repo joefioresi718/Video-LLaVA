@@ -36,8 +36,9 @@ class LlavaMetaModel:
             # try:
             # if config.ssl_encoder:
             self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
-            self.ssl_tower.ssl_pooler.train()
-            self.ssl_projector = build_vision_projector(config)
+            # self.ssl_tower.ssl_pooler.train()
+            # self.ssl_projector = build_vision_projector(config)
+            self.ssl_projector = nn.Sequential(self.ssl_tower.ssl_pooler, build_vision_projector(config))
             # except:
             #     print('No SSL encoder found in the model.')
         if getattr(config, "mm_image_tower", None) is not None or getattr(config, "mm_video_tower", None) is not None:
@@ -201,7 +202,7 @@ class LlavaMetaForCausalLM(ABC):
     def encode_ssl_videos(self, videos):  # [mini_b, c, t, h, w]
         b, _, t, _, _ = videos.shape
         video_features = self.get_model().get_ssl_tower()(videos)  # [mini_b, t, n, c]
-        video_features = self.get_model().get_ssl_tower().ssl_pooler(video_features)
+        # video_features = self.get_model().get_ssl_tower().ssl_pooler(video_features)
         video_features = self.get_model().ssl_projector(video_features)
         # video_features = torch.randn((b, t, 4096), dtype=torch.bfloat16, device=videos.device)
         return video_features
