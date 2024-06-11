@@ -167,8 +167,8 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             if not ssl_tower.is_loaded:
                 ssl_tower.load_model()
             ssl_tower.to(device=device, dtype=torch.float16)
-            ssl_processor = ssl_tower.ssl_processor
-            processor['ssl'] = ssl_processor
+            # ssl_processor = ssl_tower.ssl_processor
+            # processor['ssl'] = ssl_processor
     # ==========================================================================================================
 
     if hasattr(model.config, "max_sequence_length"):
