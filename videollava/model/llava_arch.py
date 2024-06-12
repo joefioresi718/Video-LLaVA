@@ -38,6 +38,8 @@ class LlavaMetaModel:
             self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=False)
             # self.ssl_tower.ssl_pooler.train()
             self.ssl_projector = nn.Sequential(self.ssl_tower.ssl_pooler, build_vision_projector(config))
+            self.ssl_projector.requires_grad_(False)
+            self.ssl_projector.eval()
             # except:
             #     print('No SSL encoder found in the model.')
         if getattr(config, "mm_image_tower", None) is not None or getattr(config, "mm_video_tower", None) is not None:
