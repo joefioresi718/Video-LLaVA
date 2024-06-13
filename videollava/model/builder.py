@@ -73,7 +73,10 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             non_lora_trainables = {(k[11:] if k.startswith('base_model.') else k): v for k, v in non_lora_trainables.items()}
             if any(k.startswith('model.model.') for k in non_lora_trainables):
                 non_lora_trainables = {(k[6:] if k.startswith('model.') else k): v for k, v in non_lora_trainables.items()}
-            model.load_state_dict(non_lora_trainables, strict=False)
+            # print('non_lora_trainables:', non_lora_trainables.keys())
+            # print()
+            msg = model.load_state_dict(non_lora_trainables, strict=False)
+            # print(msg)
 
             from peft import PeftModel
             print('Loading LoRA weights...')
@@ -167,6 +170,14 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             if not ssl_tower.is_loaded:
                 ssl_tower.load_model()
             ssl_tower.to(device=device, dtype=torch.float16)
+            # try:
+            #     msg = model.load_state_dict(non_lora_trainables, strict=False)
+            #     print(msg)
+            # except:
+            #     pass
+            # ssl_tower.ssl_pooler.to(device=device, dtype=torch.float16)
+            # ssl_tower.eval()
+            # ssl_tower.ssl_pooler.eval()
             # ssl_processor = ssl_tower.ssl_processor
             # processor['ssl'] = ssl_processor
     # ==========================================================================================================

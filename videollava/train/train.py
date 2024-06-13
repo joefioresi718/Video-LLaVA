@@ -383,7 +383,8 @@ def preprocess_multimodal(
 
             # a <video> is treated as `num_frames * <image>`
             replace_token = DEFAULT_IMAGE_TOKEN
-            vid_replace_token = DEFAULT_IMAGE_TOKEN * data_args.num_frames + DEFAULT_VIDEO_TOKEN if data_args.ssl_data else DEFAULT_IMAGE_TOKEN * data_args.num_frames
+            # Reminder: changed frame number
+            vid_replace_token = DEFAULT_IMAGE_TOKEN * (data_args.num_frames//2) + DEFAULT_VIDEO_TOKEN if data_args.ssl_data else DEFAULT_IMAGE_TOKEN * data_args.num_frames
             if data_args.mm_use_im_start_end:
                 replace_token = DEFAULT_IM_START_TOKEN + replace_token + DEFAULT_IM_END_TOKEN
                 vid_replace_token = DEFAULT_VID_START_TOKEN + vid_replace_token + DEFAULT_VID_END_TOKEN

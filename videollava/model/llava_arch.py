@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from .multimodal_encoder.builder import build_image_tower, build_video_tower
+from .multimodal_encoder.languagebind.video.load_vjepa import init_pooler
 from .multimodal_projector.builder import build_vision_projector
 
 from videollava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, VIDEO_TOKEN_INDEX
@@ -35,11 +36,11 @@ class LlavaMetaModel:
             self.video_tower = build_video_tower(config, load_model='clip', delay_load=True)
             # try:
             # if config.ssl_encoder:
-            self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=False)
-            # self.ssl_tower.ssl_pooler.train()
-            self.ssl_projector = nn.Sequential(self.ssl_tower.ssl_pooler, build_vision_projector(config))
-            self.ssl_projector.requires_grad_(False)
-            self.ssl_projector.eval()
+            self.ssl_tower = build_video_tower(config, load_model='ssl', delay_load=True)
+            self.ssl_projector = build_vision_projector(config)
+            # self.ssl_projector = nn.Sequential(init_pooler('ssv2'), build_vision_projector(config))
+            # self.ssl_projector.requires_grad_(False)
+            # self.ssl_projector.eval()
             # except:
             #     print('No SSL encoder found in the model.')
         if getattr(config, "mm_image_tower", None) is not None or getattr(config, "mm_video_tower", None) is not None:
@@ -188,13 +189,14 @@ class LlavaMetaForCausalLM(ABC):
 
     def encode_images(self, images):
         image_features = self.get_model().get_image_tower()(images)
-        ssl_features = self.get_model().ssl_projector(torch.zeros_like(image_features, dtype=torch.bfloat16, device=images.device))
+        # ssl_features = self.get_model().ssl_projector(torch.zeros_like(image_features, dtype=torch.bfloat16, device=images.device))
         image_features = self.get_model().mm_projector(image_features)
         # Protect against the case where there are no videos.
-        image_features = torch.cat((image_features, ssl_features[0].unsqueeze(0)), dim=0)
+        # image_features = torch.cat((image_features, ssl_features[0].unsqueeze(0)), dim=0)
         return image_features
 
     def encode_videos(self, videos):  # [mini_b, c, t, h, w]
+        videos = videos[:, :, ::2, :, :]
         b, _, t, _, _ = videos.shape
         video_features = self.get_model().get_video_tower()(videos)  # [mini_b, t, n, c]
         video_features = self.get_model().mm_projector(video_features)
@@ -203,9 +205,8 @@ class LlavaMetaForCausalLM(ABC):
     def encode_ssl_videos(self, videos):  # [mini_b, c, t, h, w]
         b, _, t, _, _ = videos.shape
         video_features = self.get_model().get_ssl_tower()(videos)  # [mini_b, t, n, c]
-        video_features = self.get_model().get_ssl_tower().ssl_pooler(video_features)
+        # video_features = self.get_model().get_ssl_tower().ssl_pooler(video_features)
         video_features = self.get_model().ssl_projector(video_features)
-        # video_features = torch.randn((b, t, 4096), dtype=torch.bfloat16, device=videos.device)
         return video_features
 
     def prepare_inputs_labels_for_multimodal(
