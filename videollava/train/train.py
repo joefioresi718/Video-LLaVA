@@ -1072,7 +1072,7 @@ def train():
 
             data_args.video_processor = video_tower.video_processor
             data_args.is_multimodal = True
-            data_args.num_frames = video_tower.config.num_frames
+            # data_args.num_frames = video_tower.config.num_frames
 
         if model_args.ssl_tower is not None:
             ssl_tower = model.get_ssl_tower()
