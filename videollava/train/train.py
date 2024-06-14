@@ -1071,7 +1071,7 @@ def train():
             video_tower.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
             print(data_args.num_frames)
             # print(vars(video_tower.video_processor))
-            video_tower.video_processor.config.video_config.num_frames = data_args.num_frames
+            video_tower.video_processor.config.vision_config.num_frames = data_args.num_frames
 
             data_args.video_processor = video_tower.video_processor
             # print(vars(data_args.video_processor))
