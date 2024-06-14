@@ -1069,6 +1069,7 @@ def train():
         if model_args.video_tower is not None:
             video_tower = model.get_video_tower()
             video_tower.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
+            video_tower.video_processor.config.video_config.num_frames = data_args.num_frames
 
             data_args.video_processor = video_tower.video_processor
             data_args.is_multimodal = True
