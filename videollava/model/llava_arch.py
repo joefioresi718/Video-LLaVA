@@ -197,13 +197,13 @@ class LlavaMetaForCausalLM(ABC):
 
     def encode_videos(self, videos):  # [mini_b, c, t, h, w]
         videos = videos[:, :, ::2, :, :]
-        b, _, t, _, _ = videos.shape
+        # b, _, t, _, _ = videos.shape
         video_features = self.get_model().get_video_tower()(videos)  # [mini_b, t, n, c]
         video_features = self.get_model().mm_projector(video_features)
         return video_features
     
     def encode_ssl_videos(self, videos):  # [mini_b, c, t, h, w]
-        b, _, t, _, _ = videos.shape
+        # b, _, t, _, _ = videos.shape
         video_features = self.get_model().get_ssl_tower()(videos)  # [mini_b, t, n, c]
         # video_features = self.get_model().get_ssl_tower().ssl_pooler(video_features)
         video_features = self.get_model().ssl_projector(video_features)
