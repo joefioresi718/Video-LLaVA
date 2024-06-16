@@ -110,6 +110,8 @@ def run_inference(args):
     tokenizer, model, processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, ssl_encoder=args.ssl_encoder)
     model = model.to(args.device)
 
+    processor['video'].config.vision_config.num_frames = 16
+
     # Load both ground truth file containing questions and answers
     # with open(args.gt_file_question) as file:
     #     gt_questions = json.load(file)
