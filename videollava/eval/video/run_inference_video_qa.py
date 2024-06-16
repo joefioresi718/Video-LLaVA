@@ -51,7 +51,7 @@ def get_model_output(model, video_processor, tokenizer, video, qs, args):
     if model.config.mm_use_im_start_end:
         qs = DEFAULT_VID_START_TOKEN + ''.join([DEFAULT_IMAGE_TOKEN]*8) + DEFAULT_VID_END_TOKEN + '\n' + qs
     elif args.ssl_encoder:
-        qs = ''.join([DEFAULT_IMAGE_TOKEN] * model.get_video_tower().config.num_frames) + '' + DEFAULT_VIDEO_TOKEN + '\n' + qs
+        qs = ''.join([DEFAULT_IMAGE_TOKEN] * (model.get_video_tower().config.num_frames//2)) + '' + DEFAULT_VIDEO_TOKEN + '\n' + qs
     else:
         qs = ''.join([DEFAULT_IMAGE_TOKEN]*8) + '\n' + qs
 
