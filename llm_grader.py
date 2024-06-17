@@ -7,26 +7,26 @@ import re
 import time
 
 from huggingface_hub import login
-login('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')
 
+llm_model = 'meta-llama/Meta-Llama-3-8B-Instruct'
 # llm_model = 'meta-llama/Llama-2-7b-chat-hf'
 # llm_model = 'google/gemma-1.1-7b-it'
-llm_model = 'mistralai/Mistral-7B-Instruct-v0.2'
+# llm_model = 'mistralai/Mistral-7B-Instruct-v0.2'
 # llm_model = 'mistralai/Mixtral-8x7B-Instruct-v0.1'
 
-bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+# bnb_config = BitsAndBytesConfig(load_in_8bit=False)
 
 tokenizer = AutoTokenizer.from_pretrained(llm_model, cache_dir='cache_dir')
 if 'mistralai' in llm_model:
     tokenizer.pad_token = tokenizer.eos_token
-model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', quantization_config=bnb_config, torch_dtype=torch.bfloat16, cache_dir='cache_dir')
+model = AutoModelForCausalLM.from_pretrained(llm_model, device_map='cuda', torch_dtype=torch.bfloat16, cache_dir='cache_dir')
 
 
 # Create the parser
 parser = argparse.ArgumentParser(description='Process pandas file path.')
 
 # Add arguments
-parser.add_argument('--answer_file', default = 'V-MMVP_ft/V-MMVP_ft_results_videochatgpt.csv', help='Path to the pandas file')
+parser.add_argument('--answer_file', default = 'V-MMVP_ft/V-MMVP_ft_results_videollava_lora_vjepa_16frame.csv', help='Path to the pandas file')
 
 # Parse arguments
 args = parser.parse_args()
@@ -67,10 +67,15 @@ def get_yes_no_answer(question):
         answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
         answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
     elif llm_model.startswith('meta-llama'):
-        prompt = tokenizer.apply_chat_template(chat, return_tensors="pt").to(model.device)
-        outputs = model.generate(input_ids=prompt, max_length=150)
-        answer = tokenizer.decode(outputs[0])
-        answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
+        prompt = tokenizer.apply_chat_template(chat, add_generation_prompt=True, return_tensors="pt").to(model.device)
+        terminators = [
+            tokenizer.eos_token_id,
+            tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        ]
+        outputs = model.generate(input_ids=prompt, max_new_tokens=256, eos_token_id=terminators, do_sample=True, temperature=0.6, top_p=0.9, pad_token_id=tokenizer.eos_token_id)
+        answer = tokenizer.decode(outputs[0][prompt.shape[-1]:], skip_special_tokens=True)
+        # answer = tokenizer.decode(outputs[0])
+        # answer = answer.split('[/INST]')[-1].split(tokenizer.eos_token)[0].replace('.', '').strip().split(' ')[0].replace('(', ' ').replace(')', ' ').strip()
     elif llm_model.startswith('google'):
         prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt")

@@ -6,34 +6,36 @@ import torch
 from transformers import logging
 logging.set_verbosity_error()
 
-from videollava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
+from videollava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_VIDEO_TOKEN, VIDEO_TOKEN_INDEX
 from videollava.conversation import conv_templates, SeparatorStyle
 from videollava.model.builder import load_pretrained_model
 from videollava.utils import disable_torch_init
-from videollava.mm_utils import tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
+from videollava.mm_utils import tokenizer_image_token, tokenizer_imagevid_token, get_model_name_from_path, KeywordsStoppingCriteria
 from vmmvp_dl import vmmvp_dataset, collate_fn
 
 
-def init_model(model_path='LanguageBind/Video-LLaVA-7B', device='cpu'):
+def init_vllava(model_path='LanguageBind/Video-LLaVA-7B', device='cpu', ssl=False):
     cache_dir = 'cache_dir'
     load_4bit, load_8bit = False, False
     model_name = get_model_name_from_path(model_path)
-    tokenizer, model, processor, context_len = load_pretrained_model(model_path, None, model_name, load_8bit, load_4bit, device=device, cache_dir=cache_dir)
+    model_base = 'lmsys/vicuna-7b-v1.5' if 'lora' in model_name else None
+    tokenizer, model, processor, context_len = load_pretrained_model(model_path, model_base, model_name, load_8bit, load_4bit, device=device, cache_dir=cache_dir, ssl_encoder=ssl)
     video_processor = processor['video']
     return tokenizer, model, video_processor, context_len
 
 
-def main(model_path):
+def main(model_path, ssl=False):
     disable_torch_init()
     device = 'cuda:0'
-    tokenizer, model, video_processor, context_len = init_model(model_path=model_path, device=device)
+    tokenizer, model, video_processor, context_len = init_vllava(model_path=model_path, device=device, ssl=ssl)
+    video_processor.config.vision_config.num_frames = 16
 
     # dataset = vmmvp_dataset()
     # print(len(dataset))
     # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn, num_workers=4)
 
     dataset_path = 'V-MMVP_ft'
-    dataset = pd.read_csv('V-MMVP_ft/V-MMVP_ft_final.csv')
+    dataset = pd.read_csv(f'{dataset_path}/V-MMVP_ft_final.csv')
 
     all_results = []
     for i, row in dataset.iterrows():
@@ -44,18 +46,24 @@ def main(model_path):
         video1 = video1.unsqueeze(0)
         video2 = video2.unsqueeze(0)
 
-        inp = row['question'] + ' ' + row['options']
+        inp = row['question'] + ' Choose the best option from the following that answers the question:\n' + row['options'].split('(b)')[0] + '\n(b)' + row['options'].split('(b)')[1] + '\nBest option: ('
 
         conv_mode = "llava_v1"
         conv = conv_templates[conv_mode].copy()
-        inp = ' '.join([DEFAULT_IMAGE_TOKEN] * model.get_video_tower().config.num_frames) + '\n' + inp
+        if ssl:
+            inp = ''.join([DEFAULT_IMAGE_TOKEN] * 8) + '' + DEFAULT_VIDEO_TOKEN + '\n' + inp
+        else:
+            inp = ' '.join([DEFAULT_IMAGE_TOKEN] * 8) + '\n' + inp
         roles = conv.roles
 
         print(f"{roles[1]}: {inp}")
         conv.append_message(conv.roles[0], inp)
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
-        input_id = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(model.device)
+        if ssl:
+            input_id = tokenizer_imagevid_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, VIDEO_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(model.device)
+        else:
+            input_id = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(model.device)
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
         keywords = [stop_str]
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_id)
@@ -88,8 +96,10 @@ def main(model_path):
         outputs1 = outputs1.strip()
         outputs2 = outputs2.strip()
 
+        print('----------------------------------------------------')
         print(outputs1)
         print(outputs2)
+        print()
 
         result = {
             'dataset': row['dataset'],
@@ -106,13 +116,16 @@ def main(model_path):
             'vssl_similarity': row['vssl_similarity']
         }
 
-        print(result)
+        # print(result)
         all_results.append(result)
 
     results_df = pd.DataFrame(all_results)
-    results_df.to_csv('V-MMVP_ft/V-MMVP_ft_results.csv', index=False)
+    results_df.to_csv(f'{dataset_path}/V-MMVP_ft_results_videollava_lora_vjepa_16frame.csv', index=False)
 
 
 if __name__ == '__main__':
-    model_path = 'LanguageBind/Video-LLaVA-7B'
-    main(model_path)
+    model_path = 'checkpoints/videollava-7b-lora-vjepa-16frame'
+    ssl = False
+    # model_path = 'checkpoints/videollava-7b'
+    # ssl = False
+    main(model_path, ssl)
