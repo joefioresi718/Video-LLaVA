@@ -295,7 +295,7 @@ class SSLVideoTower(nn.Module):
 
         self.ssl_tower = init_encoder()
         # self.ssl_pooler = init_pooler()
-        # self.ssl_tower.requires_grad_(False)
+        self.ssl_tower.requires_grad_(False)
         # self.ssl_pooler.requires_grad_(False)
 
         self.is_loaded = True
